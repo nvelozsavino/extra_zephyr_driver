@@ -1,4 +1,0 @@
-comment "Device Drivers"
-
-rsource "st95hf/Kconfig"
-

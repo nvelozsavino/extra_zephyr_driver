@@ -1,0 +1,24 @@
+# NFC configuration options
+
+menuconfig NFC
+	bool "NFC Drivers"
+	help
+	  Include NFC drivers in system config
+
+if NFC
+
+module = NFC
+module-str = nfc
+
+config NFC_INIT_PRIORITY
+	int "NFC init priority"
+	default 90
+	help
+	  NFC initialization priority.
+
+comment "Device Drivers"
+
+rsource "st95hf/Kconfig"
+
+endif # NFC
+

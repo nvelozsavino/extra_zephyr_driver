@@ -13,7 +13,7 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/pm/device.h>
 
-LOG_MODULE_REGISTER(st95hf, CONFIG_SENSOR_LOG_LEVEL);
+LOG_MODULE_REGISTER(st95hf, CONFIG_NFC_LOG_LEVEL);
 #include "st95hf.h"
 
 
@@ -349,7 +349,7 @@ int st95hf_init(const struct device *dev)
 	 	NULL,			\
 	 	&st95hf_config_##inst,			\
 	 	POST_KERNEL,				\
-	 	CONFIG_SENSOR_INIT_PRIORITY,		\
+	 	CONFIG_NFC_INIT_PRIORITY,		\
 	 	NULL);
 
 DT_INST_FOREACH_STATUS_OKAY(ST95HF_DEFINE)
