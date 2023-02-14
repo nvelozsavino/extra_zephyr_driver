@@ -1,0 +1,4 @@
+comment "Extra Module"
+
+rsource "drivers/Kconfig"
+
