@@ -86,7 +86,7 @@
 #define ST95HF_ENTER_CTRL_SLEEP										0x0100
 #define ST95HF_ENTER_CTRL_SLEEP_IF_TIMEOUT_SOURCE_ENABLED			0x2100
 #define ST95HF_ENTER_CTRL_SLEEP_IF_FIELD_DETECTOR_SOURCE_ENABLED	0x0142
-#define ST95HF_ENTER_CTRL_TAG_DETECTOR_CALIBRATION					0xA200
+#define ST95HF_ENTER_CTRL_TAG_DETECTOR_CALIBRATION					0xA100	//In the datasheet says it should be 0xA200, but in the example and their code use 0xA100
 #define ST95HF_ENTER_CTRL_TAG_DETECTION								0x2100
 
 /**
@@ -131,15 +131,17 @@ typedef struct {
 	uint8_t _unused_7_4:4;		/* Bits 7..4: 	Not significant*/
 } st95hf_poll_flag_t;
 
+
 typedef struct {
-	uint8_t command_code;
+	uint8_t cmd;
 	uint8_t len;
-} st95hf_req_header_t;
+	const void* data;
+} st95hf_req_t;
 
 typedef struct {
 	uint8_t result_code;
-	uint8_t len;
-} st95hf_rsp_header_t;
+	uint16_t len;
+} st95hf_rsp_t;
 
 /**
  * IDN command (0x01)
@@ -147,7 +149,7 @@ typedef struct {
 typedef struct {
 	char device_id[13];
 	uint16_t crc;
-} st95hf_idn_rsp_t;
+} st95hf_idn_data_t;
 
 
 /**
@@ -397,12 +399,19 @@ typedef struct {
 													0: Otherwise  */
 	uint8_t rfu0_7_1:7;			/*	Byte 0 [7..1]:	RFU (reserved for future use) */
 
-} st95hf_pollfield_rsp_t;
+} st95hf_pollfield_data_t;
 
 
 /**
  * Send Receive (SendRecv) command (0x04)
 */
+
+typedef struct{
+	uint8_t rfu0_6_0:7; 			/* 	Byte 0 [6..0] 	RFU (reserved for future use) */
+	uint8_t parity:1; 				/* 	Byte 0 [7] 		Parity */
+} st95hf_parity_byte_t;
+
+
 
 typedef struct {
 	uint8_t ack_nak;			/* ISO 14443-A ACK or NAK detection
@@ -411,13 +420,7 @@ typedef struct {
 	uint8_t xx;					/* 	Byte 1: Error type and number of significant bits in first data byte */
 	uint8_t yy;					/* 	Byte 2: First byte collision */
 	uint8_t zz;					/* 	Byte 3: First bit collision */
-} st95hf_unint_byte_t;
-
-typedef struct{
-	uint8_t rfu0_6_0:7; 			/* 	Byte 0 [6..0] 	RFU (reserved for future use) */
-	uint8_t parity:1; 				/* 	Byte 0 [7] 		Parity */
-} st95hf_parity_byte_t;
-
+} st95hf_sendrecv_ack_nak_t;
 
 
 typedef struct{
@@ -462,6 +465,8 @@ typedef struct{
 } st95hf_sendrecv_iec14443a_footer_rsp_t;
 
 
+
+
 typedef struct{
 	uint8_t rfu0_0:1; 				/* 	Byte 0 [0] 	RFU (reserved for future use) */
 	uint8_t crc_error:1; 			/* 	Byte 0 [1] 		0: No CRC error
@@ -471,6 +476,8 @@ typedef struct{
 
 
 typedef st95hf_sendrecv_iec14443b_footer_rsp_t st95hf_sendrecv_iec18092_footer_rsp_t;
+
+
 
 
 /**
@@ -561,7 +568,7 @@ typedef struct {
 	uint8_t low_pulse_irq_in:1;		/* Byte 0 [3]:			Low pulse on IRQ_IN */
 	uint8_t low_pulse_spi_ss:1;		/* Byte 0 [4]:			Low pulse on SPI_SS */
 	uint8_t rfu0_7_5:3;				/* Byte 0 [7..5]:		RFU (reserved for future use) */
-} st95hf_idle_rsp_t;
+} st95hf_idle_data_t;
 
 
 /**
@@ -638,7 +645,7 @@ typedef struct {
 
 typedef struct {
 	uint8_t freq_div;	/* N, frequency divider.  Subcarrier frequency is fs = fc / (2*(N+1)) */
-} st95hf_sub_freq_rsp_t;
+} st95hf_sub_freq_data_t;
 
 
 /**
@@ -655,10 +662,30 @@ typedef struct {
 
 typedef struct {
 	uint8_t ac_state;		/* AC state */
-} st95hf_ac_filter_rsp_t;
+} st95hf_ac_filter_data_t;
 
 
 #pragma pack(pop)
+
+
+typedef enum {
+	ST95HF_STATE_UNKNOWN = 0,
+	ST95HF_STATE_HIBERNATE ,
+	ST95HF_STATE_SLEEP,
+	ST95HF_STATE_POWERUP,
+	ST95HF_STATE_TAGDETECTOR,
+	ST95HF_STATE_READY,
+	ST95HF_STATE_READER,
+	ST95HF_STATE_TAGHUNTING,
+}st95hf_state_t;
+
+typedef enum {
+	ST95HF_MODE_UNKNOWN = 0,
+	ST95HF_MODE_READER ,
+	ST95HF_MODE_CARDEMULATOR ,
+	ST95HF_MODE_PASSIVEP2P ,
+	ST95HF_MODE_ACTIVEP2P ,
+} st95hf_mode_t;
 
 
 
@@ -670,16 +697,30 @@ typedef struct {
 #endif /* CONFIG_ST95HF_TRIGGER */
 } st95hf_config_t;
 
-struct st95hf_transfer_function {
-	int (*poll)(const struct device *dev, uint8_t mask, uint16_t count);
-	int (*send)(const struct device *dev, uint8_t cmd, uint8_t len, uint8_t* data);
-	int (*receive)(const struct device *dev, uint8_t* result_code, uint8_t* data, uint16_t* size);
-	int (*reset)(const struct device *dev);
-};
+/*
+#define ST95HF_PROTOCOL_CODE_READER_FIELD_OFF			0x00
+#define ST95HF_PROTOCOL_CODE_READER_IEC15693			0x01
+#define ST95HF_PROTOCOL_CODE_READER_IEC14443A			0x02
+#define ST95HF_PROTOCOL_CODE_READER_IEC14443B			0x03
+#define ST95HF_PROTOCOL_CODE_READER_IEC18092			0x04
+#define ST95HF_PROTOCOL_CODE_CARD_EMULATION_IEC14443A	0x12
+#define ST95HF_PROTOCOL_CODE_CARD_EMULATION_IEC14443B	0x13
+#define ST95HF_PROTOCOL_CODE_CARD_EMULATION_IEC18092	0x14
+*/
+typedef enum {
+	ST95HF_PROTOCOL_UNKNOWN = 0,
+	ST95HF_PROTOCOL_READER_IEC14443A,
+	ST95HF_PROTOCOL_READER_IEC14443B,
+	ST95HF_PROTOCOL_READER_IEC15693,
+	ST95HF_PROTOCOL_READER_IEC18092,
+	ST95HF_PROTOCOL_CARD_EMULATION_IEC14443A,
+	ST95HF_PROTOCOL_CARD_EMULATION_IEC14443B,
+	ST95HF_PROTOCOL_CARD_EMULATION_IEC15693,
+	ST95HF_PROTOCOL_CARD_EMULATION_IEC18092,
+} st95hf_protocol_t;	
+
 
 typedef struct {
-	const struct device *bus;
-	const struct st95hf_transfer_function *hw_tf;
 
 #ifdef CONFIG_PM_DEVICE
 	#erro todo
@@ -687,34 +728,52 @@ typedef struct {
 
 #ifdef CONFIG_ST95HF_TRIGGER
 	const struct device *dev;
-	struct gpio_callback gpio_int_cb;
+	struct gpio_callback gpio_irq_out_cb;
 
-	atomic_t trig_flags;
-
-#if defined(CONFIG_ST95HF_TRIGGER_OWN_THREAD)
-	K_KERNEL_STACK_MEMBER(thread_stack, CONFIG_ST95HF_THREAD_STACK_SIZE);
-	struct k_thread thread;
-	struct k_sem gpio_sem;
-#elif defined(CONFIG_ST95HF_TRIGGER_GLOBAL_THREAD)
-	struct k_work work;
-#endif
+	struct k_sem rx_sem;
 
 #endif /* CONFIG_ST95HF_TRIGGER */
 } st95hf_data_t;
 
 #ifdef CONFIG_ST95HF_TRIGGER
-int st95hf_trigger_set(const struct device *dev,
-		       const struct sensor_trigger *trig,
-		       sensor_trigger_handler_t handler);
-
 int st95hf_init_interrupt(const struct device *dev);
 #endif
 
-
-int st95hf_poll(const struct device *dev, uint8_t mask, k_timeout_t timeout);
+/**
+ * Basic functions
+*/
+int st95hf_poll(const struct device *dev, k_timeout_t timeout);
 int st95hf_send(const struct device *dev, uint8_t cmd, uint8_t len, const void* data);
 int st95hf_receive(const struct device *dev, uint8_t* result_code, void* data, uint16_t* size);
 int st95hf_reset(const struct device *dev);
+int st95hf_wakeup(const struct device* dev);
+
+int st95hf_req_rsp(const struct device* dev, const st95hf_req_t* req, st95hf_rsp_t* rsp, void* data ,k_timeout_t timeout);
+
+
+/**
+ * Commands
+*/
+int st95hf_idn_cmd(const struct device* dev, st95hf_rsp_t *rsp, st95hf_idn_data_t* data,k_timeout_t timeout);
+int st95hf_protocol_select_cmd(const struct device* dev, const st95hf_protocol_selection_req_t * req, st95hf_rsp_t *rsp,k_timeout_t timeout);
+int st95hf_pollfield_check_cmd(const struct device* dev, st95hf_rsp_t *rsp, st95hf_pollfield_data_t* data,k_timeout_t timeout);
+int st95hf_pollfield_wait_cmd(const struct device* dev, const st95hf_pollfield_req_t* req, st95hf_rsp_t *rsp, st95hf_pollfield_data_t* data,k_timeout_t timeout);
+int st95hf_send_receive_cmd(const struct device* dev, uint8_t send_size, const void* send_data, st95hf_rsp_t *rsp, void* recv_data,k_timeout_t timeout);
+int st95hf_listen_set_cmd(const struct device* dev, st95hf_rsp_t *rsp,k_timeout_t timeout);
+int st95hf_listen_wait_cmd(const struct device* dev, st95hf_rsp_t *rsp, void* listen_data,k_timeout_t timeout);
+int st95hf_send_cmd(const struct device* dev, uint8_t send_size, const void* send_data, st95hf_rsp_t *rsp,k_timeout_t timeout);
+int st95hf_idle_cmd(const struct device* dev, const st95hf_idle_req_t* req, st95hf_rsp_t* rsp, st95hf_idle_data_t* data,k_timeout_t timeout);
+int st95hf_read_reg_cmd(const struct device* dev, const st95hf_read_req_t* req, st95hf_rsp_t* rsp, uint8_t* data,k_timeout_t timeout);
+int st95hf_write_reg_cmd(const struct device* dev, const st95hf_write_req_t* req, st95hf_rsp_t* rsp,k_timeout_t timeout);
+int st95hf_subcarrier_frequency_cmd(const struct device* dev, st95hf_rsp_t* rsp, st95hf_sub_freq_data_t* data,k_timeout_t timeout);
+
+int st95hf_ac_filter_deactivate_cmd(const struct device* dev, st95hf_rsp_t * rsp, k_timeout_t timeout);
+int st95hf_ac_filter_set_state_cmd(const struct device* dev, uint8_t state, st95hf_rsp_t * rsp, k_timeout_t timeout);
+int st95hf_ac_filter_get_state_cmd(const struct device* dev, st95hf_rsp_t * rsp, st95hf_ac_filter_data_t* data,k_timeout_t timeout);
+int st95hf_ac_filter_activate_anti_colision_cmd(const struct device* dev, uint8_t uid_count, const st95hf_ac_filter_req_t* req, st95hf_rsp_t * rsp, k_timeout_t timeout);
+
+int st95hf_echo_cmd(const struct device* dev,k_timeout_t timeout);
+
 
 
 #endif /* __SENSOR_ST95HF__ */
