@@ -20,13 +20,13 @@ LOG_MODULE_REGISTER(st95hf, CONFIG_NFC_LOG_LEVEL);
 int st95hf_poll(const struct device *dev,k_timeout_t timeout){
 
 	st95hf_data_t *st95hf = dev->data;
-	// const st95hf_config_t *cfg = dev->config;
-	int err = 0;
+ 	int err = 0;
 	
 	#ifdef CONFIG_ST95HF_TRIGGER		
 		//wait for response
 		err = k_sem_take(&st95hf->rx_sem,timeout);
 	#else	
+	const st95hf_config_t *cfg = dev->config;
 
 	uint8_t ctrl_byte = 0x03;
 	const struct spi_buf tx_buf = {
@@ -91,11 +91,11 @@ int st95hf_poll(const struct device *dev,k_timeout_t timeout){
 static int st95hf_send_echo(const struct device *dev){
 
 	const st95hf_config_t *cfg = dev->config;
-	uint8_t echo_cmd = ST95HF_CMD_ECHO;
+	uint8_t echo_cmd[] = {0x00, ST95HF_CMD_ECHO};
 	const struct spi_buf tx_buf[1] = {
 		{
-			.buf = &echo_cmd,
-			.len = 1,
+			.buf = echo_cmd,
+			.len = sizeof(echo_cmd),
 		}
 	};
 	const struct spi_buf_set tx = {
@@ -177,14 +177,21 @@ int st95hf_receive(const struct device *dev, uint8_t* result_code, void* data, u
 	do {
 		err = spi_write_dt(&cfg->bus, &tx);
 		if (err){
+			LOG_ERR("Error SPI sending CMD %d", err);
 			err=-EIO;
 			break;
 		}
+
 		err = spi_read_dt(&cfg->bus, &rx_header);
 		if (err){
+			LOG_ERR("Error SPI reading header %d", err);
 			err=-EIO;
 			break;
 		}
+
+
+		
+
 		if (header[0]==ST95HF_CMD_ECHO || header[0]==0xFF){
 			//if header[0]=ECHO while listening need to retrieve 0x85 (EUserStop) already in header[1] and 0x00 (Len)
 			//if header[0]=0xFF retrieve 2 more bytes (first is already in header[1])
@@ -211,9 +218,11 @@ int st95hf_receive(const struct device *dev, uint8_t* result_code, void* data, u
 			}
 			break;
 		}
+	
 
-		uint16_t len=0;
+		uint16_t len=header[1];
 		if ((header[0] & 0x9F) == 0x80){			
+
 			len = ((0x60 & header[0])<<3) | header[1];
 		}
 		if (result_code!=NULL){
@@ -226,28 +235,34 @@ int st95hf_receive(const struct device *dev, uint8_t* result_code, void* data, u
 			break;
 		}
 		if (len>max_buffer_size){
+			LOG_ERR("Len %d, max %d",len, max_buffer_size);
+			LOG_ERR("Header %02x %02x",header[0], header[1]);
 			err= -ENOMEM;
 			break;
 		}
 		
 		const struct spi_buf rx_data_buf = {
 			.buf = data,
-			.len = max_buffer_size,
+			.len = len,
 		};
 		const struct spi_buf_set rx_data = {
 			.buffers = &rx_data_buf,
 			.count = 1
 		};
+
 		err = spi_read_dt(&cfg->bus, &rx_data);
 		if (err){
+			LOG_ERR("Error SPI reading data %d", err);
 			err=-EIO;
 			break;
 		}
 
 	} while(0);
-	
+
+
 	/* Our device is flagged with SPI_HOLD_ON_CS|SPI_LOCK_ON, release */
 	spi_release_dt(&cfg->bus);
+
 	return err;
 }
 
@@ -278,9 +293,9 @@ int st95hf_reset(const struct device *dev){
 
 int st95hf_wakeup(const struct device* dev){
 	const st95hf_config_t *cfg = dev->config;
-	gpio_pin_set_dt(&cfg->gpio_irq_in, 0);
-	k_sleep(K_USEC(10));
 	gpio_pin_set_dt(&cfg->gpio_irq_in, 1);
+	k_sleep(K_USEC(20));
+	gpio_pin_set_dt(&cfg->gpio_irq_in, 0);
 	return 0;
 }
 
@@ -563,6 +578,7 @@ int st95hf_echo_cmd(const struct device* dev,k_timeout_t timeout){
 		return err;
 	}
 	if (result_code!=ST95HF_CMD_ECHO){
+		LOG_ERR("Echo %02x!=0x55", result_code);
 		return -EBADMSG;
 	}
 	return 0;
@@ -581,15 +597,20 @@ int st95hf_req_rsp(const struct device* dev, const st95hf_req_t* req, st95hf_rsp
 	}
 	int err = st95hf_send(dev,req->cmd,req->len,data);
 	if (err!=0){
+		LOG_ERR("Error sending. %d",err);
 		return err;
 	}
 	err  = st95hf_poll(dev,timeout);
 
 	if (err!=0){
+		LOG_ERR("Error pollling. %d",err);
+
 		return err;
 	}
 	err = st95hf_receive(dev,&rsp->result_code,data,&rsp->len);
-
+	if (err!=0){
+		LOG_ERR("Error receiving. %d",err);
+	}
 	return err;
 }
 
@@ -613,6 +634,7 @@ int st95hf_init(const struct device *dev)
 	const st95hf_config_t *cfg = dev->config;
 	int status;	
 
+
 	if (!spi_is_ready(&cfg->bus)) {
 		LOG_ERR("SPI bus is not ready");
 		return -ENODEV;
@@ -623,7 +645,12 @@ int st95hf_init(const struct device *dev)
 		return -ENODEV;
 	}
 
+	LOG_INF("Configuring IRQ_IN pin to OUTPUT_HIGH");
+	gpio_pin_configure_dt(&cfg->gpio_irq_in, GPIO_OUTPUT_INACTIVE);
 
+	// Set irq-in-gpio low for 10us
+
+	st95hf_wakeup(dev);
 
 #ifdef CONFIG_ST95HF_TRIGGER
 	status = st95hf_init_interrupt(dev);
@@ -631,22 +658,19 @@ int st95hf_init(const struct device *dev)
 		LOG_ERR("Failed to initialize interrupts.");
 		return status;
 	}
-
 #endif
 
-	LOG_INF("Configuring IRQ_IN pin to OUTPUT_HIGH");
-	gpio_pin_configure_dt(&cfg->gpio_irq_in, GPIO_OUTPUT_HIGH);
-
-	// Set irq-in-gpio low for 10us
-
-	st95hf_wakeup(dev);
-
-
+	status = st95hf_echo_cmd(dev,K_MSEC(10));
+	if (status < 0) {
+		LOG_ERR("Failed to echo. %d",status);
+		return status;
+	}
+	
 	st95hf_rsp_t rsp;
 	st95hf_idn_data_t idn;
 	status = st95hf_idn_cmd(dev,&rsp,&idn,K_MSEC(10));
 	if (status < 0) {
-		LOG_ERR("Failed to read chip id.");
+		LOG_ERR("Failed to read chip id. %d",status);
 		return status;
 	}
 	if (rsp.result_code!=0){
@@ -668,18 +692,22 @@ int st95hf_init(const struct device *dev)
  * Device creation macro, shared by ST95HF_DEFINE() 
  */
 
-#ifdef CONFIG_ST95HF_TRIGGER
+#define ST95HF_HAS_SSI0(inst)					\
+		DT_INST_PROP_HAS_IDX(inst, ssi_gpios, 0)
+#define ST95HF_HAS_SSI1(inst)					\
+		DT_INST_PROP_HAS_IDX(inst, ssi_gpios, 1)
 
-#define GPIO_DT_SPEC_INST_GET_COND(id, prop)		\
-	COND_CODE_1(DT_INST_PROP_HAS_IDX(id, prop,0),		\
-		    (GPIO_DT_SPEC_INST_GET(id, prop)),	\
+#define GPIO_DT_SPEC_INST_GET_COND_BY_IDX(inst, prop,idx)		\
+	COND_CODE_1(DT_INST_PROP_HAS_IDX(inst, prop,idx),		\
+		    (GPIO_DT_SPEC_INST_GET_BY_IDX(inst, prop,idx)),	\
 		    ({.port = NULL, .pin = 0, .dt_flags = 0}))
+
+
+#ifdef CONFIG_ST95HF_TRIGGER
 
 #define ST95HF_CFG_INT(inst)				\
 	.gpio_irq_out =							\
-		GPIO_DT_SPEC_INST_GET_COND(inst, irq_out_gpios),		
-
-
+		GPIO_DT_SPEC_INST_GET_COND_BY_IDX(inst, irq_out_gpios,0),		
 #else
 
 #define ST95HF_CFG_INT(inst) 
@@ -690,12 +718,12 @@ int st95hf_init(const struct device *dev)
 		.bus = SPI_DT_SPEC_INST_GET(inst,		\
 					SPI_WORD_SET(8) |		\
 					SPI_OP_MODE_MASTER |		\
-					SPI_MODE_CPOL |			\
-					SPI_MODE_CPHA |			\
 					SPI_HOLD_ON_CS |	\
 					SPI_LOCK_ON,			\
 					0),				\
 		.gpio_irq_in =	GPIO_DT_SPEC_INST_GET(inst, irq_in_gpios), \
+		.gpio_ssi[0] = GPIO_DT_SPEC_INST_GET_COND_BY_IDX(inst,ssi_gpios,0), \
+		.gpio_ssi[1] = GPIO_DT_SPEC_INST_GET_COND_BY_IDX(inst,ssi_gpios,1), \
 		ST95HF_CFG_INT(inst) \
 	}
 #define ST95HF_DEFINE(inst)	  					\

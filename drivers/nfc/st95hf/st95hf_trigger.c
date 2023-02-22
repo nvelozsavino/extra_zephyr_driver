@@ -19,33 +19,24 @@
 LOG_MODULE_DECLARE(st95hf, CONFIG_NFC_LOG_LEVEL);
 #include "st95hf.h"
 
-static inline void setup_irq_out(const struct device *dev,
-			      bool enable)
-{
-	const st95hf_config_t *cfg = dev->config;
-
-	gpio_pin_interrupt_configure_dt(&cfg->gpio_irq_out,
-					enable
-					? GPIO_INT_LEVEL_ACTIVE
-					: GPIO_INT_DISABLE);
-}
 
 
 static void st95hf_gpio_irq_out_callback(const struct device *dev,
 				      struct gpio_callback *cb, uint32_t pins)
 {
 	st95hf_data_t *st95hf = CONTAINER_OF(cb, st95hf_data_t, gpio_irq_out_cb);
-	const st95hf_config_t *cfg = dev->config;
+	// const st95hf_config_t *cfg = dev->config;
 
 	ARG_UNUSED(pins);
-	int  irq_out = gpio_pin_get_dt(&cfg->gpio_irq_out);
-	if (irq_out){
-		// IRQ_OUT went to HIGH => Data was read
-		// k_sem_give(&st95hf->tx_sem);
-	} else {
-		// IRQ_OUT went to LOW => Data is ready to be read
+	// int  irq_out = gpio_pin_get_dt(&cfg->gpio_irq_out);
+	// if (irq_out){
+	// 	// IRQ_OUT went to HIGH => Data was read
+	// 	// k_sem_give(&st95hf->tx_sem);
+	// } else {
+	// 	// IRQ_OUT went to LOW => Data is ready to be read
 		k_sem_give(&st95hf->rx_sem);
-	}
+	// }
+
 }
 
 
@@ -56,8 +47,8 @@ int st95hf_init_interrupt(const struct device *dev)
 	int status;
 
 	st95hf->dev = dev;
-
-	k_sem_init(&st95hf->rx_sem, 0, K_SEM_MAX_LIMIT);
+	LOG_ERR("Initializing interrupts");
+	k_sem_init(&st95hf->rx_sem, 0, 1);
 
 	/* setup data ready gpio interrupt */ 
 	if (!device_is_ready(cfg->gpio_irq_out.port)) {
@@ -66,19 +57,33 @@ int st95hf_init_interrupt(const struct device *dev)
 	}
 
 	/* API may return false even when ptr is NULL */
-	if (cfg->gpio_irq_out.port != NULL) {
+	if (cfg->gpio_irq_out.port == NULL) {
 		LOG_ERR("device %s is not ready", cfg->gpio_irq_out.port->name);
 		return -ENODEV;
 	}
 
 
 	/* data ready int1 gpio configuration */
-	status = gpio_pin_configure_dt(&cfg->gpio_irq_out, GPIO_INPUT);
+	status = gpio_pin_configure_dt(&cfg->gpio_irq_out, GPIO_PULL_UP| GPIO_INPUT);
 	if (status < 0) {
 		LOG_ERR("Could not configure %s.%02u",
 			cfg->gpio_irq_out.port->name, cfg->gpio_irq_out.pin);
 		return status;
 	}
+
+	int ret = gpio_pin_get_dt(&cfg->gpio_irq_out);
+	if (ret < 0) {
+		return ret;
+	}
+	if (ret==0){
+		uint8_t result_code;
+		uint8_t dummy_data[528];
+		uint16_t size = sizeof(dummy_data);
+		st95hf_receive(dev, &result_code, dummy_data, &size);
+	}
+
+
+
 
 	gpio_init_callback(&st95hf->gpio_irq_out_cb,
 			   st95hf_gpio_irq_out_callback,
@@ -90,7 +95,8 @@ int st95hf_init_interrupt(const struct device *dev)
 		return status;
 	}
 
-	setup_irq_out(dev,true);
+	gpio_pin_interrupt_configure_dt(&cfg->gpio_irq_out,
+					GPIO_INT_EDGE_FALLING);
 
 	LOG_INF("%s: irq_out on %s.%02u", dev->name,
 				       cfg->gpio_irq_out.port->name,

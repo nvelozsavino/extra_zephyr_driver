@@ -25,3 +25,12 @@ properties:
         When not used, it can be left unconnected. 
         Internally connected to a Weak Pull-up to VPS.
 
+    ssi-gpios:
+      type: phandle-array
+      required: false
+      description: Interrupt output
+
+        Interrupt an external device or microprocessor.
+        When not used, it can be left unconnected. 
+        Internally connected to a Weak Pull-up to VPS.
+

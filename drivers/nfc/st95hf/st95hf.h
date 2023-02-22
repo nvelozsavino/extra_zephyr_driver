@@ -692,6 +692,7 @@ typedef enum {
 typedef struct {
 	struct spi_dt_spec bus;
 	const struct gpio_dt_spec gpio_irq_in;
+	const struct gpio_dt_spec gpio_ssi[2];
 #ifdef CONFIG_ST95HF_TRIGGER
 	const struct gpio_dt_spec gpio_irq_out;
 #endif /* CONFIG_ST95HF_TRIGGER */

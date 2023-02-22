@@ -10,6 +10,8 @@ if NFC
 module = NFC
 module-str = nfc
 
+source "subsys/logging/Kconfig.template.log_config"
+
 config NFC_INIT_PRIORITY
 	int "NFC init priority"
 	default 90
