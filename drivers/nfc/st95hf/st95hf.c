@@ -584,7 +584,11 @@ int st95hf_echo_cmd(const struct device* dev,k_timeout_t timeout){
 	return 0;
 }
 
-int st95hf_tag_calibration(const struct device* dev, uint8_t wu_period, uint8_t* data_h){
+int st95hf_tag_calibration(const struct device* dev, uint8_t wu_period, uint8_t* dac_data_ref){
+
+	if (dac_data_ref==NULL){
+		return -EINVAL;
+	}
 	
 	uint8_t steps[6]  = {0x80, 0x40, 0x20, 0x10, 0x08, 0x04};
 
@@ -619,41 +623,57 @@ int st95hf_tag_calibration(const struct device* dev, uint8_t wu_period, uint8_t*
         LOG_ERR("Error %d. Calibrating",err);
         return err;
     }
-    if (rsp.result_code==0x00 && rsp.len==1 && data.byte==0x02){
-
+    if (rsp.result_code==0x00 && rsp.len==1 && data.byte==ST95HF_WAKEUP_SOURCE_TAG_DETECTION){
+		LOG_INF("Tag Detected with %02x", idle_req.dac_data_h);
 		idle_req.dac_data_h=0xFC;
+		data.byte=0;
 		err = st95hf_idle_cmd(dev,&idle_req,&rsp,&data,K_SECONDS(3));
 		if (err!=0){
 			LOG_ERR("Error %d. Calibrating",err);
 			return err;
 		}
-		if (rsp.result_code==0x00 && rsp.len==1 && data.byte==0x01){
+		if (rsp.result_code==0x00 && rsp.len==1 && data.byte==ST95HF_WAKEUP_SOURCE_TIME_OUT){
+			LOG_INF("Tag Timeout with %02x", idle_req.dac_data_h);
+			LOG_INF("Running Algorithm");
+
 			for(uint8_t i=0; i<6; i++) {					
 				switch(data.byte) {
-					case 0x01:
+					case ST95HF_WAKEUP_SOURCE_TIME_OUT:
+						LOG_INF("Tag Timeout with %02x step %d", idle_req.dac_data_h,i);
 
 						idle_req.dac_data_h-= steps[i];
 						break;
 				
-					case 0x02:
+					case ST95HF_WAKEUP_SOURCE_TAG_DETECTION:
+						LOG_INF("Tag Detected with %02x step %d", idle_req.dac_data_h,i);
+
 						idle_req.dac_data_h+= steps[i];
 						break;
 				
 					default:
 						return -EINVAL;
 				}
-				
+				data.byte=0;
 				err = st95hf_idle_cmd(dev,&idle_req,&rsp,&data,K_SECONDS(3));
 				if (err!=0){
 					LOG_ERR("Error %d. Calibrating",err);
 					return err;
 				}
 			}
+		} else {
+			LOG_INF("Tag Detected with %02x", idle_req.dac_data_h);
+			return -EIO;
 		}
-		if (rsp.result_code==0x00 && rsp.len==1 && data.byte==0x01){
-					*data_h = (idle_req.dac_data_h -0x04) + 0x08;
+		
+		LOG_INF("Finish Algorithm %02x, %02x",data.byte,idle_req.dac_data_h);
+		if (rsp.result_code==0x00 && rsp.len==1 && data.byte==ST95HF_WAKEUP_SOURCE_TIME_OUT){
+			LOG_INF("Tag Timeout with %02x last step", idle_req.dac_data_h);
+
+			*dac_data_ref = (idle_req.dac_data_h -0x04) ;
 		}else{
-					*data_h = idle_req.dac_data_h + 0x08;
+			LOG_INF("Tag Detected with %02x last step", idle_req.dac_data_h);
+
+			*dac_data_ref = idle_req.dac_data_h ;
 		}
 		return 0;
     } else {

@@ -546,9 +546,9 @@ typedef struct {
 	
 	/* 	These two bytes (DacDataL and DacDataH) define the lower and higher comparator values, respectively. 
 		These values are determined by a calibration process.*/
-	uint8_t dac_data_h;				/* Higher compare value for tag detection. This is a variable used during tag detection calibration */
 	uint8_t dac_data_l;				/* Lower compare value for tag detection.
 										This value must be set to 0x00 during tag detection calibration. */
+	uint8_t dac_data_h;				/* Higher compare value for tag detection. This is a variable used during tag detection calibration */
 
 	uint8_t swings_count;			/* Number of swings HF during tag detection (Default value = 0x3F) (Recommended value: 0x3F) */ 
 
