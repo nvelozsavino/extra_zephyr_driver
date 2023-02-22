@@ -272,7 +272,7 @@ int st95hf_reset(const struct device *dev){
 	uint8_t ctrl_byte = {0x01};
 	const struct spi_buf tx_buf = {
 		.buf = &ctrl_byte,
-		.len = 1,
+		.len = sizeof(ctrl_byte),
 	};
 	const struct spi_buf_set tx = {
 		.buffers = &tx_buf,
@@ -293,9 +293,9 @@ int st95hf_reset(const struct device *dev){
 
 int st95hf_wakeup(const struct device* dev){
 	const st95hf_config_t *cfg = dev->config;
-	gpio_pin_set_dt(&cfg->gpio_irq_in, 1);
-	k_sleep(K_USEC(20));
 	gpio_pin_set_dt(&cfg->gpio_irq_in, 0);
+	k_sleep(K_USEC(20));
+	gpio_pin_set_dt(&cfg->gpio_irq_in, 1);
 	return 0;
 }
 
@@ -584,7 +584,83 @@ int st95hf_echo_cmd(const struct device* dev,k_timeout_t timeout){
 	return 0;
 }
 
+int st95hf_tag_calibration(const struct device* dev, uint8_t wu_period, uint8_t* data_h){
+	
+	uint8_t steps[6]  = {0x80, 0x40, 0x20, 0x10, 0x08, 0x04};
 
+	 st95hf_idle_req_t idle_req = {
+        .wakeup_source=ST95HF_WAKEUP_SOURCE_TIME_OUT | ST95HF_WAKEUP_SOURCE_TAG_DETECTION,
+        // .enter_ctrl=ST95HF_ENTER_CTRL_TAG_DETECTOR_CALIBRATION,
+        // .wakeup_ctrl=ST95HF_WAKEUP_CTRL_SLEEP_TAG_DETECTOR_CALIBRATION,
+
+        // .leave_ctrl=ST95HF_LEAVE_CTRL_SLEEP_TAG_DETECTOR_CALIBRATION,
+
+        .enter_ctrl_h=ST95HF_ENTER_CTRL_TAG_DETECTOR_CALIBRATION>>8,
+        .enter_ctrl_l=ST95HF_ENTER_CTRL_TAG_DETECTOR_CALIBRATION&0xFF,
+        .wakeup_ctrl_h=ST95HF_WAKEUP_CTRL_SLEEP_TAG_DETECTOR_CALIBRATION>>8,
+        .wakeup_ctrl_l=ST95HF_WAKEUP_CTRL_SLEEP_TAG_DETECTOR_CALIBRATION&0xFF,
+
+        .leave_ctrl_h=ST95HF_LEAVE_CTRL_SLEEP_TAG_DETECTOR_CALIBRATION>>8,
+        .leave_ctrl_l=ST95HF_LEAVE_CTRL_SLEEP_TAG_DETECTOR_CALIBRATION&0xFF,
+        .wakeup_period=wu_period,
+        .osc_start=0x60, // Recomended value
+        .dac_start=0x60, // Recomended value
+        .dac_data_h=0x00,
+        .dac_data_l=0x00,
+        .swings_count=0x3F, // Recomended value
+        .max_sleep=0x01, // From ST example
+
+    };
+    st95hf_rsp_t rsp;
+    st95hf_idle_data_t data;
+    //>>>0x07 0E 03 A1 00 F8 01 18 00 20 60 60 00 xx 3F 01
+    int err = st95hf_idle_cmd(dev,&idle_req,&rsp,&data,K_SECONDS(3));
+    if (err!=0){
+        LOG_ERR("Error %d. Calibrating",err);
+        return err;
+    }
+    if (rsp.result_code==0x00 && rsp.len==1 && data.byte==0x02){
+
+		idle_req.dac_data_h=0xFC;
+		err = st95hf_idle_cmd(dev,&idle_req,&rsp,&data,K_SECONDS(3));
+		if (err!=0){
+			LOG_ERR("Error %d. Calibrating",err);
+			return err;
+		}
+		if (rsp.result_code==0x00 && rsp.len==1 && data.byte==0x01){
+			for(uint8_t i=0; i<6; i++) {					
+				switch(data.byte) {
+					case 0x01:
+
+						idle_req.dac_data_h-= steps[i];
+						break;
+				
+					case 0x02:
+						idle_req.dac_data_h+= steps[i];
+						break;
+				
+					default:
+						return -EINVAL;
+				}
+				
+				err = st95hf_idle_cmd(dev,&idle_req,&rsp,&data,K_SECONDS(3));
+				if (err!=0){
+					LOG_ERR("Error %d. Calibrating",err);
+					return err;
+				}
+			}
+		}
+		if (rsp.result_code==0x00 && rsp.len==1 && data.byte==0x01){
+					*data_h = (idle_req.dac_data_h -0x04) + 0x08;
+		}else{
+					*data_h = idle_req.dac_data_h + 0x08;
+		}
+		return 0;
+    } else {
+        LOG_ERR("Calibration failed %02x",rsp.result_code);
+    }
+	return -EIO;
+}
 
 int st95hf_req_rsp(const struct device* dev, const st95hf_req_t* req, st95hf_rsp_t* rsp, void* data ,k_timeout_t timeout){
 	// st95hf_data_t *st95hf = dev->data;
@@ -595,7 +671,7 @@ int st95hf_req_rsp(const struct device* dev, const st95hf_req_t* req, st95hf_rsp
 	if (rsp->len!=0 && data==NULL){
 		return -EINVAL;
 	}
-	int err = st95hf_send(dev,req->cmd,req->len,data);
+	int err = st95hf_send(dev,req->cmd,req->len,req->data);
 	if (err!=0){
 		LOG_ERR("Error sending. %d",err);
 		return err;
@@ -646,12 +722,18 @@ int st95hf_init(const struct device *dev)
 	}
 
 	LOG_INF("Configuring IRQ_IN pin to OUTPUT_HIGH");
-	gpio_pin_configure_dt(&cfg->gpio_irq_in, GPIO_OUTPUT_INACTIVE);
+	gpio_pin_configure_dt(&cfg->gpio_irq_in, GPIO_OUTPUT_HIGH);
 
 	// Set irq-in-gpio low for 10us
 
 	st95hf_wakeup(dev);
 
+	status = st95hf_reset(dev);
+	if (status < 0) {
+		LOG_ERR("Failed to reset. %d",status);
+	}
+	// k_sleep(K_MSEC(1));
+	st95hf_wakeup(dev);
 #ifdef CONFIG_ST95HF_TRIGGER
 	status = st95hf_init_interrupt(dev);
 	if (status < 0) {
@@ -659,13 +741,15 @@ int st95hf_init(const struct device *dev)
 		return status;
 	}
 #endif
-
-	status = st95hf_echo_cmd(dev,K_MSEC(10));
+	uint8_t retries=0;
+	do {
+		status = st95hf_echo_cmd(dev,K_MSEC(10));
+		retries++;
+	} while (status!=0 && retries<5);
 	if (status < 0) {
 		LOG_ERR("Failed to echo. %d",status);
 		return status;
 	}
-	
 	st95hf_rsp_t rsp;
 	st95hf_idn_data_t idn;
 	status = st95hf_idn_cmd(dev,&rsp,&idn,K_MSEC(10));

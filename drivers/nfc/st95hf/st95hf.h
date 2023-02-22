@@ -521,18 +521,19 @@ typedef struct {
 	
 	/* Settings to enter WFE (Wait for event) mode 
 		These two bytes (EnterCtrlL and EnterCtrlH) define the resources when entering WFE mode */
-	uint8_t enter_ctrl_l;			
+
 	uint8_t enter_ctrl_h;
+	uint8_t enter_ctrl_l;			
 	
 	/* Settings to wake-up from WFE mode 
 		These two bytes (WuCtrlL and WuCtrlH) define the wake-up resources 	*/
-	uint8_t wakeup_ctrl_l;			
 	uint8_t wakeup_ctrl_h;			
+	uint8_t wakeup_ctrl_l;			
 	
 	/* Settings to leave WFE mode.
 		These two bytes (LeaveCtrlL and LeaveCtrlH) define the resources when returning to Ready state. (Default value = 0x1800) */
-	uint8_t leave_ctrl_l;			
 	uint8_t leave_ctrl_h;
+	uint8_t leave_ctrl_l;			
 	
 	uint8_t wakeup_period;			/* This byte is the coefficient used to adjust the time allowed between two tag
 										detections. Also used to specify the duration before Timeout. (Typical value: 0x20)
@@ -545,9 +546,9 @@ typedef struct {
 	
 	/* 	These two bytes (DacDataL and DacDataH) define the lower and higher comparator values, respectively. 
 		These values are determined by a calibration process.*/
+	uint8_t dac_data_h;				/* Higher compare value for tag detection. This is a variable used during tag detection calibration */
 	uint8_t dac_data_l;				/* Lower compare value for tag detection.
 										This value must be set to 0x00 during tag detection calibration. */
-	uint8_t dac_data_h;				/* Higher compare value for tag detection. This is a variable used during tag detection calibration */
 
 	uint8_t swings_count;			/* Number of swings HF during tag detection (Default value = 0x3F) (Recommended value: 0x3F) */ 
 
@@ -561,13 +562,16 @@ typedef struct {
 } st95hf_idle_req_t;
 
 /* This response is sent only when ST95HF exits WFE mode. */
-typedef struct {
-	uint8_t timeout:1;				/* Byte 0 [0]:			Timeout */
-	uint8_t tag_detect:1;			/* Byte 0 [1]:			Tag detected */
-	uint8_t rfu0_2:1;				/* Byte 0 [2]:			RFU (reserved for future use) */
-	uint8_t low_pulse_irq_in:1;		/* Byte 0 [3]:			Low pulse on IRQ_IN */
-	uint8_t low_pulse_spi_ss:1;		/* Byte 0 [4]:			Low pulse on SPI_SS */
-	uint8_t rfu0_7_5:3;				/* Byte 0 [7..5]:		RFU (reserved for future use) */
+typedef union{
+	uint8_t byte;
+	struct {
+		uint8_t timeout:1;				/* Byte 0 [0]:			Timeout */
+		uint8_t tag_detect:1;			/* Byte 0 [1]:			Tag detected */
+		uint8_t rfu0_2:1;				/* Byte 0 [2]:			RFU (reserved for future use) */
+		uint8_t low_pulse_irq_in:1;		/* Byte 0 [3]:			Low pulse on IRQ_IN */
+		uint8_t low_pulse_spi_ss:1;		/* Byte 0 [4]:			Low pulse on SPI_SS */
+		uint8_t rfu0_7_5:3;				/* Byte 0 [7..5]:		RFU (reserved for future use) */
+	} fields;
 } st95hf_idle_data_t;
 
 
@@ -775,6 +779,11 @@ int st95hf_ac_filter_activate_anti_colision_cmd(const struct device* dev, uint8_
 
 int st95hf_echo_cmd(const struct device* dev,k_timeout_t timeout);
 
+
+/**
+ * Functions
+*/
+int st95hf_tag_calibration(const struct device* dev, uint8_t wu_period, uint8_t* data_h);
 
 
 #endif /* __SENSOR_ST95HF__ */
