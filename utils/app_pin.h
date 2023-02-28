@@ -30,6 +30,7 @@ typedef struct
     // const struct device* dev;
 } app_pin_t;
 
-int app_pin_init(app_pin_t *pin, bool set);
+int app_pin_init(app_pin_t *pin, bool default_value, bool also_as_input);
 int app_pin_set(app_pin_t *pin, bool on);
+int app_pin_get(app_pin_t *pin);
 int app_pin_toggle(app_pin_t *pin);
