@@ -5,3 +5,4 @@
 #
 
 add_subdirectory(nfc)
+add_subdirectory(sensor)

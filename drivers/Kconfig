@@ -1,3 +1,5 @@
 comment "Extra Drivers"
 rsource "nfc/Kconfig"
+rsource "sensor/Kconfig"
+
 

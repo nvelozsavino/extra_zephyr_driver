@@ -1,0 +1,26 @@
+# Copyright (c) 2020 Nordic Semiconductor ASA
+# SPDX-License-Identifier: Apache-2.0
+
+description: |
+  Bosch BMA456 triaxial acceleration sensor.  See more info at:
+  https://www.bosch-sensortec.com/products/motion-sensors/accelerometers/bma456.html
+
+compatible: "bosch,bma456"
+
+include: [sensor-device.yaml, i2c-device.yaml]
+
+properties:
+  int-gpios:
+    type: phandle-array
+    required: false
+    description: |
+      Identifies pins for the INT1 and INT2 signal on the sensor. 
+                
+
+  is-bmc150:
+    type: boolean
+    required: false
+    description: |
+      Specifies that the driver should adapt to the accelerometer
+      capability provided by the BMC150 6-axis eCompass.  This affects
+      the chip ID and the resolution of the measurements.

@@ -1,0 +1,8 @@
+
+if SENSOR
+comment "Device Drivers"
+
+rsource "bma456/Kconfig"
+
+endif # SENSOR
+
