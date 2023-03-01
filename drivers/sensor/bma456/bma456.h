@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016 Intel Corporation
+ * Copyright (c) 2017 Intel Corporation
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -7,127 +7,104 @@
 #ifndef ZEPHYR_DRIVERS_SENSOR_BMA456_BMA456_H_
 #define ZEPHYR_DRIVERS_SENSOR_BMA456_BMA456_H_
 
+#include <zephyr/kernel.h>
 #include <zephyr/device.h>
 #include <zephyr/sys/util.h>
-#include <zephyr/types.h>
-#include <zephyr/drivers/i2c.h>
+#include <stdint.h>
 #include <zephyr/drivers/gpio.h>
-#include <zephyr/kernel.h>
+#include <zephyr/drivers/sensor.h>
+#include <string.h>
 
-#define BMA456_REG_CHIP_ID		0x00
-#if DT_INST_PROP(0, is_bmc150)
-	#define BMA456_CHIP_ID		0xFA
-#else
-	#define BMA456_CHIP_ID		0x16
+#include "bosch/bma4_defs.h"
+
+
+#if DT_ANY_INST_ON_BUS_STATUS_OKAY(spi)
+#include <zephyr/drivers/spi.h>
+#endif /* DT_ANY_INST_ON_BUS_STATUS_OKAY(spi) */
+
+#if DT_ANY_INST_ON_BUS_STATUS_OKAY(i2c)
+#include <zephyr/drivers/i2c.h>
+#endif /* DT_ANY_INST_ON_BUS_STATUS_OKAY(i2c) */
+
+/* sample buffer size includes status register */
+#define BMA456_BUF_SZ			7
+
+union bma456_sample {
+	uint8_t raw[BMA456_BUF_SZ];
+	struct {
+		uint8_t status;
+		int16_t xyz[3];
+	} __packed;
+};
+
+union bma456_bus_cfg {
+#if DT_ANY_INST_ON_BUS_STATUS_OKAY(i2c)
+	struct i2c_dt_spec i2c;
 #endif
 
-#define BMA456_REG_PMU_BW		0x10
-#if CONFIG_BMA456_PMU_BW_1
-	#define BMA456_PMU_BW		0x08
-#elif CONFIG_BMA456_PMU_BW_2
-	#define BMA456_PMU_BW		0x09
-#elif CONFIG_BMA456_PMU_BW_3
-	#define BMA456_PMU_BW		0x0A
-#elif CONFIG_BMA456_PMU_BW_4
-	#define BMA456_PMU_BW		0x0B
-#elif CONFIG_BMA456_PMU_BW_5
-	#define BMA456_PMU_BW		0x0C
-#elif CONFIG_BMA456_PMU_BW_6
-	#define BMA456_PMU_BW		0x0D
-#elif CONFIG_BMA456_PMU_BW_7
-	#define BMA456_PMU_BW		0x0E
-#elif CONFIG_BMA456_PMU_BW_8
-	#define BMA456_PMU_BW		0x0F
+#if DT_ANY_INST_ON_BUS_STATUS_OKAY(spi)
+	struct spi_dt_spec spi;
+#endif /* DT_ANY_INST_ON_BUS_STATUS_OKAY(spi) */
+};
+
+struct temperature {
+	uint8_t cfg_addr;
+	uint8_t enable_mask;
+	uint8_t dout_addr;
+	uint8_t fractional_bits;
+};
+
+struct bma456_config {
+	int (*bus_init)(const struct device *dev);
+	const union bma456_bus_cfg bus_cfg;
+#ifdef CONFIG_BMA456_TRIGGER
+	const struct gpio_dt_spec gpio_drdy;
+	const struct gpio_dt_spec gpio_int;
+#endif /* CONFIG_BMA456_TRIGGER */
+	struct {
+		bool disc_pull_up : 1;
+		bool anym_on_int1 : 1;
+		bool anym_latch : 1;
+		uint8_t anym_mode : 2;
+	} hw;
+#ifdef CONFIG_BMA456_MEASURE_TEMPERATURE
+	const struct temperature temperature;
 #endif
+};
 
-/*
- * BMA456_PMU_FULL_RANGE measured in milli-m/s^2 instead
- * of m/s^2 to avoid using struct sensor_value for it
- */
-#define BMA456_REG_PMU_RANGE		0x0F
-#if CONFIG_BMA456_PMU_RANGE_2G
-	#define BMA456_PMU_RANGE	0x03
-	#define BMA456_PMU_FULL_RANGE	(4 * SENSOR_G)
-#elif CONFIG_BMA456_PMU_RANGE_4G
-	#define BMA456_PMU_RANGE	0x05
-	#define BMA456_PMU_FULL_RANGE	(8 * SENSOR_G)
-#elif CONFIG_BMA456_PMU_RANGE_8G
-	#define BMA456_PMU_RANGE	0x08
-	#define BMA456_PMU_FULL_RANGE	(16 * SENSOR_G)
-#elif CONFIG_BMA456_PMU_RANGE_16G
-	#define BMA456_PMU_RANGE	0x0C
-	#define BMA456_PMU_FULL_RANGE	(32 * SENSOR_G)
-#endif
-
-#define BMA456_REG_TEMP			0x08
-
-#define BMA456_REG_INT_STATUS_0		0x09
-#define BMA456_BIT_SLOPE_INT_STATUS	BIT(2)
-#define BMA456_REG_INT_STATUS_1		0x0A
-#define BMA456_BIT_DATA_INT_STATUS	BIT(7)
-
-#define BMA456_REG_INT_EN_0		0x16
-#define BMA456_BIT_SLOPE_EN_X		BIT(0)
-#define BMA456_BIT_SLOPE_EN_Y		BIT(1)
-#define BMA456_BIT_SLOPE_EN_Z		BIT(2)
-#define BMA456_SLOPE_EN_XYZ (BMA456_BIT_SLOPE_EN_X | \
-		BMA456_BIT_SLOPE_EN_Y | BMA456_BIT_SLOPE_EN_X)
-
-#define BMA456_REG_INT_EN_1		0x17
-#define BMA456_BIT_DATA_EN		BIT(4)
-
-#define BMA456_REG_INT_MAP_0		0x19
-#define BMA456_INT_MAP_0_BIT_SLOPE	BIT(2)
-
-#define BMA456_REG_INT_MAP_1		0x1A
-#define BMA456_INT_MAP_1_BIT_DATA	BIT(0)
-
-#define BMA456_REG_INT_RST_LATCH	0x21
-#define BMA456_INT_MODE_LATCH		0x0F
-#define BMA456_BIT_INT_LATCH_RESET	BIT(7)
-
-#define BMA456_REG_INT_5		0x27
-#define BMA456_SLOPE_DUR_SHIFT		0
-#define BMA456_SLOPE_DUR_MASK		(3 << BMA456_SLOPE_DUR_SHIFT)
-
-#define BMA456_REG_SLOPE_TH		0x28
-
-#define BMA456_REG_ACCEL_X_LSB		0x2
-#define BMA456_REG_ACCEL_Y_LSB		0x4
-#define BMA456_REG_ACCEL_Z_LSB		0x6
-
-#if DT_INST_PROP(0, is_bmc150)
-	#define BMA456_ACCEL_LSB_BITS	4
-	#define BMA456_ACCEL_LSB_SHIFT	4
-#else
-	#define BMA456_ACCEL_LSB_BITS	6
-	#define BMA456_ACCEL_LSB_SHIFT	2
-#endif
-#define BMA456_ACCEL_LSB_MASK		\
-		(BIT_MASK(BMA456_ACCEL_LSB_BITS) << BMA456_ACCEL_LSB_SHIFT)
-
-#define BMA456_REG_ACCEL_X_MSB		0x3
-#define BMA456_REG_ACCEL_Y_MSB		0x5
-#define BMA456_REG_ACCEL_Z_MSB		0x7
-
-#define BMA456_THREAD_PRIORITY		10
-#define BMA456_THREAD_STACKSIZE_UNIT	1024
+struct bma456_transfer_function {
+	int (*read_data)(const struct device *dev, uint8_t reg_addr,
+			 uint8_t *value, uint32_t len);
+	int (*write_data)(const struct device *dev, uint8_t reg_addr,
+			  uint8_t *value, uint32_t len);
+};
 
 struct bma456_data {
-	int16_t x_sample;
-	int16_t y_sample;
-	int16_t z_sample;
-	int8_t temp_sample;
+	const struct device *bus;
+	struct bma4_dev bma;
+	const struct bma456_transfer_function *hw_tf;
+
+	union bma456_sample sample;
+	/* current scaling factor, in micro m/s^2 / lsb */
+	uint32_t scale;
+
+#ifdef CONFIG_BMA456_MEASURE_TEMPERATURE
+	struct sensor_value temperature;
+#endif
+
+#ifdef CONFIG_PM_DEVICE
+	uint8_t reg_ctrl1_active_val;
+#endif
 
 #ifdef CONFIG_BMA456_TRIGGER
 	const struct device *dev;
-	struct gpio_callback gpio_cb;
+	struct gpio_callback gpio_int1_cb;
+	struct gpio_callback gpio_int2_cb;
 
-	struct sensor_trigger data_ready_trigger;
-	sensor_trigger_handler_t data_ready_handler;
-
-	struct sensor_trigger any_motion_trigger;
-	sensor_trigger_handler_t any_motion_handler;
+	sensor_trigger_handler_t handler_drdy;
+	sensor_trigger_handler_t handler_anymotion;
+	atomic_t trig_flags;
+	enum sensor_channel chan_drdy;
 
 #if defined(CONFIG_BMA456_TRIGGER_OWN_THREAD)
 	K_KERNEL_STACK_MEMBER(thread_stack, CONFIG_BMA456_THREAD_STACK_SIZE);
@@ -140,25 +117,25 @@ struct bma456_data {
 #endif /* CONFIG_BMA456_TRIGGER */
 };
 
-struct bma456_config {
-	struct i2c_dt_spec i2c;
-#ifdef CONFIG_BMA456_TRIGGER
-	struct gpio_dt_spec int1_gpio;
-	struct gpio_dt_spec int2_gpio;
+#if DT_ANY_INST_ON_BUS_STATUS_OKAY(spi)
+int bma456_spi_access(struct bma456_data *ctx, uint8_t cmd,
+		      void *data, size_t length);
 #endif
-};
 
 #ifdef CONFIG_BMA456_TRIGGER
 int bma456_trigger_set(const struct device *dev,
 		       const struct sensor_trigger *trig,
 		       sensor_trigger_handler_t handler);
 
-int bma456_attr_set(const struct device *dev,
-		    enum sensor_channel chan,
-		    enum sensor_attribute attr,
-		    const struct sensor_value *val);
-
 int bma456_init_interrupt(const struct device *dev);
+
+int bma456_acc_slope_config(const struct device *dev,
+			    enum sensor_attribute attr,
+			    const struct sensor_value *val);
 #endif
 
-#endif /* ZEPHYR_DRIVERS_SENSOR_BMA456_BMA456_H_ */
+int bma456_spi_init(const struct device *dev);
+int bma456_i2c_init(const struct device *dev);
+
+
+#endif /* __SENSOR_BMA456__ */

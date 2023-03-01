@@ -1,22 +1,21 @@
 # BMA456 Three Axis Accelerometer configuration options
 
-# Copyright (c) 2016 Intel Corporation
+# Copyright (c) 2017 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
 menuconfig BMA456
-	bool "BMA456 Three Axis Accelerometer Family"
+	bool "BMA456 Three Axis Accelerometer"
 	default y
 	depends on DT_HAS_BOSCH_BMA456_ENABLED
-	select I2C
+	select I2C if $(dt_compat_on_bus,$(DT_COMPAT_BOSCH_BMA456),i2c)
+	select SPI if $(dt_compat_on_bus,$(DT_COMPAT_BOSCH_BMA456),spi)
 	help
-	  Enable driver for BMA456 I2C-based triaxial accelerometer sensor
-	  family.
+	  Enable SPI/I2C-based driver for BMA456, triaxial accelerometer sensors.
 
 if BMA456
 
-choice
+choice BMA456_TRIGGER_MODE
 	prompt "Trigger mode"
-	default BMA456_TRIGGER_GLOBAL_THREAD
 	help
 	  Specify the type of triggering to be used by the driver.
 
@@ -52,56 +51,127 @@ config BMA456_THREAD_STACK_SIZE
 	help
 	  Stack size of thread used by the driver to handle interrupts.
 
-choice
+choice BMA456_ACCEL_RANGE
 	prompt "Acceleration measurement range"
-	default BMA456_PMU_RANGE_2G
+	default BMA456_ACCEL_RANGE_RUNTIME
 	help
-	  Measurement range for acceleration values.
+	  Initial measurement full scale range for acceleration values.
 
-config BMA456_PMU_RANGE_2G
+config BMA456_ACCEL_RANGE_RUNTIME
+	bool "Set at runtime"
+
+config BMA456_ACCEL_RANGE_2G
 	bool "+/-2g"
 
-config BMA456_PMU_RANGE_4G
+config BMA456_ACCEL_RANGE_4G
 	bool "+/-4g"
 
-config BMA456_PMU_RANGE_8G
+config BMA456_ACCEL_RANGE_8G
 	bool "+/-8g"
 
-config BMA456_PMU_RANGE_16G
+config BMA456_ACCEL_RANGE_16G
 	bool "+/-16g"
 
 endchoice
 
-choice
-	prompt "Acceleration data filter bandwidth"
-	default BMA456_PMU_BW_7
+choice BMA456_OPER_MODE
+	prompt "Operation mode"
+	default BMA456_OPER_MODE_LOW_POWER
 	help
-	  Bandwidth of filtered acceleration data.
+	  Choose between performance or low power operation
+	  mode for chip at init.
 
-config BMA456_PMU_BW_1
-	bool "7.81Hz"
+config BMA456_OPER_MODE_PERFORMANCE
+	bool "Performance mode accel"
 
-config BMA456_PMU_BW_2
-	bool "15.63HZ"
-
-config BMA456_PMU_BW_3
-	bool "31.25Hz"
-
-config BMA456_PMU_BW_4
-	bool "62.5Hz"
-
-config BMA456_PMU_BW_5
-	bool "125Hz"
-
-config BMA456_PMU_BW_6
-	bool "250HZ"
-
-config BMA456_PMU_BW_7
-	bool "500Hz"
-
-config BMA456_PMU_BW_8
-	bool "unfiltered"
+config BMA456_OPER_MODE_LOW_POWER
+	bool "Low power mode"
 
 endchoice
+
+choice BMA456_ODR
+	prompt "Output data rate frequency"
+	default BMA456_ODR_RUNTIME
+	help
+	  Initial data rate frequency of acceleration data at initialization.
+	  Supported values:
+	  12.5Hz, 25Hz, 50Hz, 100Hz, 200Hz, 400Hz, 800Hz, 1600Hz in all modes (performance and low power)
+	  0.78Hz, 1.56Hz, 3.125Hz, 6.25Hz, in low power mode only
+
+config BMA456_ODR_RUNTIME
+	bool "Set at runtime"
+
+config BMA456_ODR_0_78
+	bool "0.78Hz"
+	depends on BMA456_OPER_MODE_LOW_POWER	
+	
+config BMA456_ODR_1_56
+	bool "1.56Hz"
+	depends on BMA456_OPER_MODE_LOW_POWER	
+
+config BMA456_ODR_3_125
+	bool "3.125Hz"
+	depends on BMA456_OPER_MODE_LOW_POWER	
+
+config BMA456_ODR_6_25
+	bool "6.25Hz"
+	depends on BMA456_OPER_MODE_LOW_POWER	
+
+config BMA456_ODR_12_5
+	bool "12.5Hz"
+
+config BMA456_ODR_25
+	bool "25Hz"
+
+config BMA456_ODR_50
+	bool "50Hz"
+
+config BMA456_ODR_100
+	bool "100Hz"
+
+config BMA456_ODR_200
+	bool "200KHz"
+
+config BMA456_ODR_400
+	bool "400KHz"
+
+config BMA456_ODR_800
+	bool "800KHz"
+
+config BMA456_ODR_1600
+	bool "1600KHz"
+
+endchoice
+
+choice BMA456_VARIANT
+prompt "BMA456 Variant"
+	default BMA456_VARIANT_MM
+	help
+	  BMA456, the same chip, has three variants. By default, BMA456 is for wearable applications such as smart watch,
+	  wristband, etc. If BMA456 is downloaded with another config file, then it becomes BMA456H which is for hearable
+	  applications such as headphone, earbud, etc. BMA456H has the triple-tap interrupt feature added.
+	  BMA456MM is a variant of BMA456 with specialized config file that supports most interrupt features of BMA253 and
+	  BMA280 for mass market.
+
+
+config BMA456_VARIANT_MM
+	bool "BMA456MM (mass market)"
+
+config BMA456_VARIANT_H
+	bool "BMA456H (hearable applications)"
+
+config BMA456_VARIANT_W
+	bool "BMA456W (wearable applications)"
+
+config BMA456_VARIANT_AN
+	bool "BMA456AN (just any motion and no motion)"
+
+endchoice
+
+config BMA456_MEASURE_TEMPERATURE
+	bool "Temperature measurements"
+	help
+	  The temperature sensor has 8 bits. The temperature value is updated every 1.28 s.
+	  The temperature sensor is always on, when the accelerometer sensor is active.
 
 endif # BMA456
