@@ -10,12 +10,51 @@ compatible: "bosch,bma456"
 include: [sensor-device.yaml, i2c-device.yaml]
 
 properties:
-  int-gpios:
+  int1-gpios:
     type: phandle-array
     required: false
     description: |
-      Identifies pins for the INT1 and INT2 signal on the sensor. 
+      Identifies pins for the INT1 on the sensor. 
+  int2-gpios:
+    type: phandle-array
+    required: false
+    description: |
+      Identifies pins for the INT2 on the sensor. 
                 
+  int-non-latched:
+    type: boolean
+    required: false
+    description: |
+      Specifies if the interrupts are non-latched. Default = latched
+
+  anym-on-int1:
+    type: boolean
+    required: false
+    description: |
+      Indicates that the device driver should use interrupt 1
+      for any movement. This is for boards that only have one
+      interrupt line connected from the sensor to the processor.
+      It disables the DataRDY interrupt
+
+  anym-mode:
+    type: int
+    required: false
+    default: 0
+    description: |
+      Select the interrupt mode for any movement.
+
+      0 = OR combination of interrupt events
+      1 = 6D movement recognition
+      2 = AND combination of interrupt events
+      3 = 6D position recognition
+
+      The default of 0 is the power-on-reset value.
+    enum:
+      - 0
+      - 1
+      - 2
+      - 3
+
 
   is-bmc150:
     type: boolean

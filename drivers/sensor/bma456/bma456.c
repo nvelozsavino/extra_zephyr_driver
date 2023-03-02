@@ -21,7 +21,6 @@
 #ifdef CONFIG_BMA456_VARIANT_H
 #include "bosch/bma456h.h"
 #endif
-
 #ifdef CONFIG_BMA456_VARIANT_W
 #include "bosch/bma456w.h"
 #endif
@@ -606,17 +605,13 @@ static int bma456_pm_action(const struct device *dev,
 			    &bma456_driver_api);
 
 
-#define DISC_PULL_UP(inst) \
-	DT_INST_PROP(inst, disconnect_sdo_sa0_pull_up)
+#define ANYM_ON_INT1(inst) DT_INST_PROP(inst, anym_on_int1)
 
-#define ANYM_ON_INT1(inst) \
-	DT_INST_PROP(inst, anym_on_int1)
+#define INT_LATCHED(inst) DT_INST_PROP(inst, int_latched)
 
-#define ANYM_LATCH(inst) \
-	!DT_INST_PROP(inst, anym_no_latch)
+#define ANYM_MODE(inst) DT_INST_PROP(inst, anym_mode)
 
-#define ANYM_MODE(inst) \
-	DT_INST_PROP(inst, anym_mode)
+
 
 #ifdef CONFIG_BMA456_TRIGGER
 #define GPIO_DT_SPEC_INST_GET_BY_IDX_COND(id, prop, idx)		\
@@ -625,14 +620,10 @@ static int bma456_pm_action(const struct device *dev,
 		    ({.port = NULL, .pin = 0, .dt_flags = 0}))
 
 #define BMA456_CFG_INT(inst)				\
-	.gpio_drdy =							\
-	    COND_CODE_1(ANYM_ON_INT1(inst),		\
-		({.port = NULL, .pin = 0, .dt_flags = 0}),                  \
-		(GPIO_DT_SPEC_INST_GET_BY_IDX_COND(inst, irq_gpios, 0))),	\
-	.gpio_int =								\
-	    COND_CODE_1(ANYM_ON_INT1(inst),		\
-		(GPIO_DT_SPEC_INST_GET_BY_IDX_COND(inst, irq_gpios, 0)),	\
-		(GPIO_DT_SPEC_INST_GET_BY_IDX_COND(inst, irq_gpios, 1))),
+	.gpio_int1 =							\
+		GPIO_DT_SPEC_INST_GET_BY_IDX_COND(inst, int_gpios, 0),	\
+	.gpio_int2 =								\
+		GPIO_DT_SPEC_INST_GET_BY_IDX_COND(inst, int_gpios, 1),
 #else
 #define BMA456_CFG_INT(inst)
 #endif /* CONFIG_BMA456_TRIGGER */
@@ -671,10 +662,8 @@ static int bma456_pm_action(const struct device *dev,
 					SPI_MODE_CPHA,			\
 					0) },				\
 		.hw = { \
-			.disc_pull_up = DISC_PULL_UP(inst),		\
-			.anym_on_int1 = ANYM_ON_INT1(inst),		\
-			.anym_latch = ANYM_LATCH(inst),			\
-			.anym_mode = ANYM_MODE(inst), },		\
+			.int_latched = INT_LATCHED(inst), 	\
+			.int_latched = INT_LATCHED(inst), },		\
 		BMA456_CFG_TEMPERATURE(inst)				\
 		BMA456_CFG_INT(inst)					\
 	}

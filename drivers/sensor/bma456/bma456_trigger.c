@@ -10,6 +10,22 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
+#include "bosch/bma4.h"
+
+#ifdef CONFIG_BMA456_VARIANT_MM
+#include "bosch/bma456mm.h"
+#endif
+#ifdef CONFIG_BMA456_VARIANT_H
+#include "bosch/bma456h.h"
+#endif
+#ifdef CONFIG_BMA456_VARIANT_W
+#include "bosch/bma456w.h"
+#endif
+#ifdef CONFIG_BMA456_VARIANT_AN
+#include "bosch/bma456an.h"
+#endif
+
+
 #define START_TRIG_INT1			0
 #define START_TRIG_INT2			1
 #define TRIGGED_INT1			4
@@ -17,6 +33,21 @@
 
 LOG_MODULE_DECLARE(bma456, CONFIG_SENSOR_LOG_LEVEL);
 #include "bma456.h"
+
+
+static const uint8_t int1_triggers_array[] =  { 
+	0,  /* Both int1 and int2 disabled */ 
+	(BMA456_TRIGGER_DATA_READY|BMA456_TRIGGER_ANY_MOTION|BMA456_TRIGGER_NO_MOTION|BMA456_TRIGGER_TAP|BMA456_TRIGGER_DOUBLE_TAP), /* only int1 enabled */ 
+	0,  /* only int2 enabled */ 
+	BMA456_TRIGGER_DATA_READY  /* Both enabled */ 
+};
+
+static const uint8_t int2_triggers_array[] =  { 
+	0, 	/* Both int1 and int2 disabled*/ 
+	0, /* only int1 enabled */ 
+	(BMA456_TRIGGER_DATA_READY|BMA456_TRIGGER_ANY_MOTION|BMA456_TRIGGER_NO_MOTION|BMA456_TRIGGER_TAP|BMA456_TRIGGER_DOUBLE_TAP), /* only int2 enabled */ 
+	(BMA456_TRIGGER_ANY_MOTION|BMA456_TRIGGER_NO_MOTION|BMA456_TRIGGER_TAP|BMA456_TRIGGER_DOUBLE_TAP) /* Both enabled */ 
+};
 
 static inline void setup_int1(const struct device *dev,
 			      bool enable)
@@ -35,6 +66,7 @@ static int bma456_trigger_drdy_set(const struct device *dev,
 {
 	const struct bma456_config *cfg = dev->config;
 	struct bma456_data *bma456 = dev->data;
+	struct bma4_dev *bma = &bma456->bma;
 	int status;
 
 	if (cfg->gpio_drdy.port == NULL) {
@@ -46,9 +78,11 @@ static int bma456_trigger_drdy_set(const struct device *dev,
 
 	/* cancel potentially pending trigger */
 	atomic_clear_bit(&bma456->trig_flags, TRIGGED_INT1);
-
-	status = bma456->hw_tf->update_reg(dev, BMA456_REG_CTRL3,
-					   BMA456_EN_DRDY1_INT1, 0);
+    int8_t rslt = bma4_map_interrupt(BMA4_INTR1_MAP, BMA4_DATA_RDY_INT, BMA4_DISABLE, &bma);
+	if (rslt != BMA4_OK) {
+		LOG_ERR("Error clearing data rdy on int1 (%d)", rslt);
+		return -EIO;
+	}
 
 	bma456->handler_drdy = handler;
 	if ((handler == NULL) || (status < 0)) {
@@ -130,6 +164,8 @@ static int bma456_trigger_anym_set(const struct device *dev,
 {
 	const struct bma456_config *cfg = dev->config;
 	struct bma456_data *bma456 = dev->data;
+	struct bma4_dev *bma = &bma456->bma;
+
 	int status;
 	uint8_t reg_val;
 
@@ -143,9 +179,12 @@ static int bma456_trigger_anym_set(const struct device *dev,
 	/* cancel potentially pending trigger */
 	atomic_clear_bit(&bma456->trig_flags, TRIGGED_INT2);
 
+	int8_t rslt;
 	if (cfg->hw.anym_on_int1) {
-		status = bma456->hw_tf->update_reg(dev, BMA456_REG_CTRL3,
-						   BMA456_EN_DRDY1_INT1, 0);
+		rslt = bma4_map_interrupt(BMA4_INTR1_MAP, (BMA456MM_ANY_MOT_INT | BMA456MM_NO_MOT_INT), BMA4_DISABLE, &bma);
+
+		// status = bma456->hw_tf->update_reg(dev, BMA456_REG_CTRL3,
+		// 				   BMA456_EN_DRDY1_INT1, 0);
 	}
 
 	/* disable any movement interrupt events */
@@ -194,8 +233,7 @@ int bma456_trigger_set(const struct device *dev,
 		       const struct sensor_trigger *trig,
 		       sensor_trigger_handler_t handler)
 {
-	if (trig->type == SENSOR_TRIG_DATA_READY &&
-	    trig->chan == SENSOR_CHAN_ACCEL_XYZ) {
+	if (trig->type == SENSOR_TRIG_DATA_READY) {
 		return bma456_trigger_drdy_set(dev, trig->chan, handler);
 	} else if (trig->type == SENSOR_TRIG_DELTA) {
 		return bma456_trigger_anym_set(dev, handler);
@@ -420,10 +458,103 @@ int bma456_init_interrupt(const struct device *dev)
 {
 	struct bma456_data *bma456 = dev->data;
 	const struct bma456_config *cfg = dev->config;
+	struct bma4_dev *bma = &bma456->bma;
 	int status;
 	uint8_t raw[2];
 
-	bma456->dev = dev;
+	/* disable interrupt in case of warm (re)boot */
+	int8_t rslt = bma4_map_interrupt(BMA4_INTR1_MAP, 0xFFFF, BMA4_DISABLE, &bma);
+	if (rslt != BMA4_OK) {
+		LOG_ERR("Interrupt disable reg write failed (%d)", rslt);
+		return -EIO;
+	}
+
+	rslt = bma4_set_interrupt_mode(cfg->hw.int_latched?BMA4_LATCH_MODE:BMA4_NON_LATCH_MODE,&bma);
+	if (rslt != BMA4_OK) {
+		LOG_ERR("Setting Latch mode %d failed (%d)", cfg->hw.int_latched, rslt);
+		return -EIO;
+	}
+
+
+
+
+	/*
+	 * Setup INT1 (for DRDY) if defined in DT
+	 */
+	uint8_t int_pins=0;
+	/* setup data ready gpio interrupt */
+	if (!device_is_ready(cfg->gpio_int1.port)) {
+		/* API may return false even when ptr is NULL */
+		if (cfg->gpio_int1.port != NULL) {
+			LOG_ERR("device %s is not ready", cfg->gpio_int1.port->name);
+			return -ENODEV;
+		}
+		LOG_DBG("gpio_int1 not defined in DT");
+	} else {
+		
+		/* data ready int1 gpio configuration */
+		status = gpio_pin_configure_dt(&cfg->gpio_int1, GPIO_INPUT);
+		if (status < 0) {
+			LOG_ERR("Could not configure %s.%02u",
+				cfg->gpio_drdy.port->name, cfg->gpio_int1.pin);
+			return status;
+		}
+
+		gpio_init_callback(&bma456->gpio_int1_cb,
+				bma456_gpio_int1_callback,
+				BIT(cfg->gpio_int1.pin));
+
+		status = gpio_add_callback(cfg->gpio_int1.port, &bma456->gpio_int1_cb);
+		if (status < 0) {
+			LOG_ERR("Could not add gpio int1 callback");
+			return status;
+		}
+
+		LOG_INF("%s: int1 on %s.%02u", dev->name,
+						cfg->gpio_int1.port->name,
+						cfg->gpio_int1.pin);
+		int_pins|=1;		
+	}
+
+	if (!device_is_ready(cfg->gpio_int2.port)) {
+		/* API may return false even when ptr is NULL */
+		if (cfg->gpio_int2.port != NULL) {
+			LOG_ERR("device %s is not ready", cfg->gpio_int2.port->name);
+			return -ENODEV;
+		}
+		LOG_DBG("gpio_int2 not defined in DT");
+	} else {
+		status = gpio_pin_configure_dt(&cfg->gpio_int2, GPIO_INPUT);
+		if (status < 0) {
+			LOG_ERR("Could not configure %s.%02u",
+				cfg->gpio_drdy.port->name, cfg->gpio_int2.pin);
+			return status;
+		}
+
+		gpio_init_callback(&bma456->gpio_int2_cb,
+				bma456_gpio_int2_callback,
+				BIT(cfg->gpio_int2.pin));
+
+		status = gpio_add_callback(cfg->gpio_int2.port, &bma456->gpio_int2_cb);
+		if (status < 0) {
+			LOG_ERR("Could not add gpio int2 callback");
+			return status;
+		}
+
+		LOG_INF("%s: int2 on %s.%02u", dev->name,
+						cfg->gpio_int2.port->name,
+						cfg->gpio_int2.pin);
+		int_pins|=2;		
+	}
+
+
+	if (int_pins==0){
+		LOG_ERR("No int pin enabled");
+		return -ENODEV;
+	}
+
+	bma456->int1_triggers = int1_triggers_array[int_pins];
+	bma456->int2_triggers = int2_triggers_array[int_pins];
 
 #if defined(CONFIG_BMA456_TRIGGER_OWN_THREAD)
 	k_sem_init(&bma456->gpio_sem, 0, K_SEM_MAX_LIMIT);
@@ -435,133 +566,5 @@ int bma456_init_interrupt(const struct device *dev)
 	bma456->work.handler = bma456_work_cb;
 #endif
 
-	/*
-	 * Setup INT1 (for DRDY) if defined in DT
-	 */
-
-	/* setup data ready gpio interrupt */
-	if (!device_is_ready(cfg->gpio_drdy.port)) {
-		/* API may return false even when ptr is NULL */
-		if (cfg->gpio_drdy.port != NULL) {
-			LOG_ERR("device %s is not ready", cfg->gpio_drdy.port->name);
-			return -ENODEV;
-		}
-
-		LOG_DBG("gpio_drdy not defined in DT");
-		status = 0;
-		goto check_gpio_int;
-	}
-
-	/* data ready int1 gpio configuration */
-	status = gpio_pin_configure_dt(&cfg->gpio_drdy, GPIO_INPUT);
-	if (status < 0) {
-		LOG_ERR("Could not configure %s.%02u",
-			cfg->gpio_drdy.port->name, cfg->gpio_drdy.pin);
-		return status;
-	}
-
-	gpio_init_callback(&bma456->gpio_int1_cb,
-			   bma456_gpio_int1_callback,
-			   BIT(cfg->gpio_drdy.pin));
-
-	status = gpio_add_callback(cfg->gpio_drdy.port, &bma456->gpio_int1_cb);
-	if (status < 0) {
-		LOG_ERR("Could not add gpio int1 callback");
-		return status;
-	}
-
-	LOG_INF("%s: int1 on %s.%02u", dev->name,
-				       cfg->gpio_drdy.port->name,
-				       cfg->gpio_drdy.pin);
-
-check_gpio_int:
-	/*
-	 * Setup Interrupt (for Any Motion) if defined in DT
-	 */
-
-	/* setup any motion gpio interrupt */
-	if (!device_is_ready(cfg->gpio_int.port)) {
-		/* API may return false even when ptr is NULL */
-		if (cfg->gpio_int.port != NULL) {
-			LOG_ERR("device %s is not ready", cfg->gpio_int.port->name);
-			return -ENODEV;
-		}
-
-		LOG_DBG("gpio_int not defined in DT");
-		status = 0;
-		goto end;
-	}
-
-	/* any motion int2 gpio configuration */
-	status = gpio_pin_configure_dt(&cfg->gpio_int, GPIO_INPUT);
-	if (status < 0) {
-		LOG_ERR("Could not configure %s.%02u",
-			cfg->gpio_int.port->name, cfg->gpio_int.pin);
-		return status;
-	}
-
-	gpio_init_callback(&bma456->gpio_int2_cb,
-			   bma456_gpio_int2_callback,
-			   BIT(cfg->gpio_int.pin));
-
-	/* callback is going to be enabled by trigger setting function */
-	status = gpio_add_callback(cfg->gpio_int.port, &bma456->gpio_int2_cb);
-	if (status < 0) {
-		LOG_ERR("Could not add gpio int2 callback (%d)", status);
-		return status;
-	}
-
-	LOG_INF("%s: int2 on %s.%02u", dev->name,
-				       cfg->gpio_int.port->name,
-				       cfg->gpio_int.pin);
-
-	/* disable interrupt in case of warm (re)boot */
-	status = bma456->hw_tf->write_reg(
-		dev,
-		cfg->hw.anym_on_int1 ? BMA456_REG_INT1_CFG : BMA456_REG_INT2_CFG,
-		0);
-	if (status < 0) {
-		LOG_ERR("Interrupt disable reg write failed (%d)", status);
-		return status;
-	}
-
-	(void)memset(raw, 0, sizeof(raw));
-	status = bma456->hw_tf->write_data(
-		dev,
-		cfg->hw.anym_on_int1 ? BMA456_REG_INT1_THS : BMA456_REG_INT2_THS,
-		raw, sizeof(raw));
-	if (status < 0) {
-		LOG_ERR("Burst write to THS failed (%d)", status);
-		return status;
-	}
-
-	if (cfg->hw.anym_on_int1) {
-		/* enable interrupt 1 on int1 line */
-		status = bma456->hw_tf->update_reg(dev, BMA456_REG_CTRL3,
-						   BMA456_EN_INT1_INT1,
-						   BMA456_EN_INT1_INT1);
-		if (cfg->hw.anym_latch) {
-			/* latch int1 line interrupt */
-			status = bma456->hw_tf->write_reg(dev, BMA456_REG_CTRL5,
-							  BMA456_EN_LIR_INT1);
-		}
-	} else {
-		/* enable interrupt 2 on int2 line */
-		status = bma456->hw_tf->update_reg(dev, BMA456_REG_CTRL6,
-						   BMA456_EN_INT2_INT2,
-						   BMA456_EN_INT2_INT2);
-		if (cfg->hw.anym_latch) {
-			/* latch int2 line interrupt */
-			status = bma456->hw_tf->write_reg(dev, BMA456_REG_CTRL5,
-							  BMA456_EN_LIR_INT2);
-		}
-	}
-
-	if (status < 0) {
-		LOG_ERR("enable reg write failed (%d)", status);
-		return status;
-	}
-
-end:
 	return status;
 }
