@@ -1,0 +1,20 @@
+#pragma once
+
+#include <zephyr/sys/util.h>
+#include <zephyr/drivers/i2c.h>
+#if defined(CONFIG_MCP4716_I2C_SPEED_STANDARD)
+#define MCP4716_BUS_SPEED	I2C_SPEED_STANDARD
+#elif defined(CONFIG_MCP4716_I2C_SPEED_FAST)
+#define MCP4716_BUS_SPEED	I2C_SPEED_FAST
+#elif defined(CONFIG_MCP4716_I2C_SPEED_HIGH_SPEED)
+#define MCP4716_BUS_SPEED	I2C_SPEED_HIGH
+#endif
+
+
+#if defined(CONFIG_MCP4716_RESOLUTION_8)
+#define MCP4716_RESOLUTION	8
+#elif defined(CONFIG_MCP4716_RESOLUTION_10)
+#define MCP4716_RESOLUTION	10
+#elif defined(CONFIG_MCP4716_RESOLUTION_12)
+#define MCP4716_RESOLUTION	12
+#endif

@@ -1,0 +1,68 @@
+# DAC configuration options
+
+# Copyright (c) 2021 Laird Connectivity
+#
+# SPDX-License-Identifier: Apache-2.0
+
+config MCP4716
+	bool "Microchip MCP4716 DAC driver"
+	default y
+	select I2C
+	depends on DT_HAS_MICROCHIP_MCP4716_ENABLED
+	help
+	  Enable the driver for the Microchip MCP4716.
+
+if MCP4716
+
+choice
+	prompt "MCP4716 I2C bus speed"
+	default MCP4716_I2C_SPEED_FAST
+
+config MCP4716_I2C_SPEED_STANDARD
+	bool "Standard"
+	help
+	  Standard bus speed of up to 100kHz.
+
+config MCP4716_I2C_SPEED_FAST
+	bool "Fast"
+	help
+	  Fast bus speed of up to 400KHz.
+
+config MCP4716_I2C_SPEED_HIGH_SPEED
+	bool "High Speed"
+	help
+	  Fast bus speed of up to 3.4MHz.
+
+endchoice
+
+
+
+choice
+	prompt "MCP4716 Resolution"
+	default MCP4716_RESOLUTION_10
+
+config MCP4716_RESOLUTION_8
+	bool "8 bits"
+	help
+	  8 bit resolution
+
+config MCP4716_RESOLUTION_10
+	bool "10 bits"
+	help
+	  10 bit resolution
+
+config MCP4716_RESOLUTION_12
+	bool "12 bits"
+	help
+	  12 bit resolution
+
+endchoice
+
+
+config DAC_MCP4716_INIT_PRIORITY
+	int "Init priority"
+	default 80
+	help
+	  Microchip MCP4716 DAC device driver initialization priority.
+
+endif # DAC_MCP4716

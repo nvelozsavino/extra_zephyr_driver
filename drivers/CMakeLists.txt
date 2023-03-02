@@ -6,3 +6,4 @@
 
 add_subdirectory(nfc)
 add_subdirectory(sensor)
+add_subdirectory(dac)

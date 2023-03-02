@@ -1,0 +1,7 @@
+# DAC configuration options
+
+if DAC
+
+rsource "mcp4716/Kconfig"
+
+endif # DAC
