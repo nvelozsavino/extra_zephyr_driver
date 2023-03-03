@@ -54,7 +54,18 @@ static inline void setup_int1(const struct device *dev,
 {
 	const struct bma456_config *cfg = dev->config;
 
-	gpio_pin_interrupt_configure_dt(&cfg->gpio_drdy,
+	gpio_pin_interrupt_configure_dt(&cfg->gpio_int1,
+					enable
+					? GPIO_INT_LEVEL_ACTIVE
+					: GPIO_INT_DISABLE);
+}
+
+static inline void setup_int2(const struct device *dev,
+			      bool enable)
+{
+	const struct bma456_config *cfg = dev->config;
+
+	gpio_pin_interrupt_configure_dt(&cfg->gpio_int2,
 					enable
 					? GPIO_INT_LEVEL_ACTIVE
 					: GPIO_INT_DISABLE);
@@ -68,13 +79,54 @@ static int bma456_trigger_drdy_set(const struct device *dev,
 	struct bma456_data *bma456 = dev->data;
 	struct bma4_dev *bma = &bma456->bma;
 	int status;
-
-	if (cfg->gpio_drdy.port == NULL) {
-		LOG_ERR("trigger_set DRDY int not supported");
-		return -ENOTSUP;
+	if (bma456->int1_triggers & BMA456_TRIGGER_DATA_READY){
+		if (cfg->gpio_int1.port == NULL) {
+			LOG_ERR("trigger_set DRDY int not supported");
+			return -ENOTSUP;
+		}
+		setup_int1(dev, false);
 	}
 
-	setup_int1(dev, false);
+	
+    struct bma4_accel_config accel_conf = { 0 };
+
+	/* Accelerometer configuration settings */
+    /* Output data Rate */
+    accel_conf.odr = BMA4_OUTPUT_DATA_RATE_50HZ;
+
+    /* Gravity range of the sensor (+/- 2G, 4G, 8G, 16G) */
+    accel_conf.range = BMA4_ACCEL_RANGE_2G;
+
+    /* The bandwidth parameter is used to configure the number of sensor samples that are averaged
+     * if it is set to 2, then 2^(bandwidth parameter) samples
+     * are averaged, resulting in 4 averaged samples
+     * Note1 : For more information, refer the datasheet.
+     * Note2 : A higher number of averaged samples will result in a less noisier signal, but
+     * this has an adverse effect on the power consumed.
+     */
+    accel_conf.bandwidth = BMA4_ACCEL_NORMAL_AVG4;
+
+    /* Enable the filter performance mode where averaging of samples
+     * will be done based on above set bandwidth and ODR.
+     * There are two modes
+     *  0 -> Averaging samples (Default)
+     *  1 -> No averaging
+     * For more info on No Averaging mode refer datasheet.
+     */
+    accel_conf.perf_mode = BMA4_CIC_AVG_MODE;
+
+    /* Set the accel configurations */
+    rslt = bma4_set_accel_config(&accel_conf, &bma);
+    bma4_error_codes_print_result("bma4_set_accel_config status", rslt);
+
+    /* NOTE : Enable accel after set of configurations */
+    rslt = bma4_set_accel_enable(BMA4_ENABLE, &bma);
+    bma4_error_codes_print_result("bma4_set_accel_enable status", rslt);
+
+    /* Mapping data ready interrupt with interrupt pin 1 to get interrupt status once getting new accel data */
+    rslt = bma456mm_map_interrupt(BMA4_INTR1_MAP, BMA4_DATA_RDY_INT, BMA4_ENABLE, &bma);
+    bma4_error_codes_print_result("bma456mm_map_interrupt status", rslt);
+
 
 	/* cancel potentially pending trigger */
 	atomic_clear_bit(&bma456->trig_flags, TRIGGED_INT1);
@@ -242,66 +294,66 @@ int bma456_trigger_set(const struct device *dev,
 	return -ENOTSUP;
 }
 
-int bma456_acc_slope_config(const struct device *dev,
-			    enum sensor_attribute attr,
-			    const struct sensor_value *val)
-{
-	struct bma456_data *bma456 = dev->data;
-	const struct bma456_config *cfg = dev->config;
-	int status;
+// int bma456_acc_slope_config(const struct device *dev,
+// 			    enum sensor_attribute attr,
+// 			    const struct sensor_value *val)
+// {
+// 	struct bma456_data *bma456 = dev->data;
+// 	const struct bma456_config *cfg = dev->config;
+// 	int status;
 
-	if (attr == SENSOR_ATTR_SLOPE_TH) {
-		uint8_t range_g, reg_val;
-		uint32_t slope_th_ums2;
+// 	if (attr == SENSOR_ATTR_SLOPE_TH) {
+// 		uint8_t range_g, reg_val;
+// 		uint32_t slope_th_ums2;
 
-		status = bma456->hw_tf->read_reg(dev, BMA456_REG_CTRL4,
-						 &reg_val);
-		if (status < 0) {
-			return status;
-		}
+// 		status = bma456->hw_tf->read_reg(dev, BMA456_REG_CTRL4,
+// 						 &reg_val);
+// 		if (status < 0) {
+// 			return status;
+// 		}
 
-		/* fs reg value is in the range 0 (2g) - 3 (16g) */
-		range_g = 2 * (1 << ((BMA456_FS_MASK & reg_val)
-				      >> BMA456_FS_SHIFT));
+// 		/* fs reg value is in the range 0 (2g) - 3 (16g) */
+// 		range_g = 2 * (1 << ((BMA456_FS_MASK & reg_val)
+// 				      >> BMA456_FS_SHIFT));
 
-		slope_th_ums2 = val->val1 * 1000000 + val->val2;
+// 		slope_th_ums2 = val->val1 * 1000000 + val->val2;
 
-		/* make sure the provided threshold does not exceed range */
-		if ((slope_th_ums2 - 1) > (range_g * SENSOR_G)) {
-			return -EINVAL;
-		}
+// 		/* make sure the provided threshold does not exceed range */
+// 		if ((slope_th_ums2 - 1) > (range_g * SENSOR_G)) {
+// 			return -EINVAL;
+// 		}
 
-		/* 7 bit full range value */
-		reg_val = 128 / range_g * (slope_th_ums2 - 1) / SENSOR_G;
+// 		/* 7 bit full range value */
+// 		reg_val = 128 / range_g * (slope_th_ums2 - 1) / SENSOR_G;
 
-		LOG_INF("int2_ths=0x%x range_g=%d ums2=%u", reg_val,
-			    range_g, slope_th_ums2 - 1);
+// 		LOG_INF("int2_ths=0x%x range_g=%d ums2=%u", reg_val,
+// 			    range_g, slope_th_ums2 - 1);
 
-		status = bma456->hw_tf->write_reg(dev,
-						  cfg->hw.anym_on_int1 ?
-								BMA456_REG_INT1_THS :
-								BMA456_REG_INT2_THS,
-						  reg_val);
-	} else { /* SENSOR_ATTR_SLOPE_DUR */
-		/*
-		 * slope duration is measured in number of samples:
-		 * N/ODR where N is the register value
-		 */
-		if (val->val1 < 0 || val->val1 > 127) {
-			return -ENOTSUP;
-		}
+// 		status = bma456->hw_tf->write_reg(dev,
+// 						  cfg->hw.anym_on_int1 ?
+// 								BMA456_REG_INT1_THS :
+// 								BMA456_REG_INT2_THS,
+// 						  reg_val);
+// 	} else { /* SENSOR_ATTR_SLOPE_DUR */
+// 		/*
+// 		 * slope duration is measured in number of samples:
+// 		 * N/ODR where N is the register value
+// 		 */
+// 		if (val->val1 < 0 || val->val1 > 127) {
+// 			return -ENOTSUP;
+// 		}
 
-		LOG_INF("int2_dur=0x%x", val->val1);
+// 		LOG_INF("int2_dur=0x%x", val->val1);
 
-		status = bma456->hw_tf->write_reg(dev,
-						  cfg->hw.anym_on_int1 ?
-								BMA456_REG_INT1_DUR :
-								BMA456_REG_INT2_DUR,
-						  val->val1);
-	}
+// 		status = bma456->hw_tf->write_reg(dev,
+// 						  cfg->hw.anym_on_int1 ?
+// 								BMA456_REG_INT1_DUR :
+// 								BMA456_REG_INT2_DUR,
+// 						  val->val1);
+// 	}
 
-	return status;
-}
+// 	return status;
+// }
 
 static void bma456_gpio_int1_callback(const struct device *dev,
 				      struct gpio_callback *cb, uint32_t pins)
@@ -469,7 +521,7 @@ int bma456_init_interrupt(const struct device *dev)
 		return -EIO;
 	}
 
-	rslt = bma4_set_interrupt_mode(cfg->hw.int_latched?BMA4_LATCH_MODE:BMA4_NON_LATCH_MODE,&bma);
+	rslt = bma4_set_interrupt_mode(cfg->hw.int_non_latched?BMA4_NON_LATCH_MODE:BMA4_LATCH_MODE,&bma);
 	if (rslt != BMA4_OK) {
 		LOG_ERR("Setting Latch mode %d failed (%d)", cfg->hw.int_latched, rslt);
 		return -EIO;

@@ -29,7 +29,7 @@ static int bma456_i2c_read_data(const struct device *dev, uint8_t reg_addr,
 }
 
 static int bma456_i2c_write_data(const struct device *dev, uint8_t reg_addr,
-				  uint8_t *value, uint32_t len)
+				  const uint8_t *value, uint32_t len)
 {
 	const struct bma456_config *cfg = dev->config;
 

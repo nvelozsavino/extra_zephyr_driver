@@ -16,6 +16,14 @@
 #include <string.h>
 
 #include "bosch/bma4_defs.h"
+
+
+enum bma456_attribute {
+	BMA456_ATTR_BANDWIDTH = (SENSOR_ATTR_PRIV_START+1),
+	BMA456_ATTR_PERF_MODE,
+};
+
+
 #define BMA456_TRIGGER_DATA_READY 	(1<<0)
 #define BMA456_TRIGGER_ANY_MOTION 	(1<<1)
 #define BMA456_TRIGGER_NO_MOTION 	(1<<2)
@@ -48,13 +56,6 @@
 /* sample buffer size includes status register */
 #define BMA456_BUF_SZ			7
 
-union bma456_sample {
-	uint8_t raw[BMA456_BUF_SZ];
-	struct {
-		uint8_t status;
-		int16_t xyz[3];
-	} __packed;
-};
 
 union bma456_bus_cfg {
 #if DT_ANY_INST_ON_BUS_STATUS_OKAY(i2c)
@@ -81,11 +82,11 @@ struct bma456_config {
 	const struct gpio_dt_spec gpio_int2;
 #endif /* CONFIG_BMA456_TRIGGER */
 	struct {
-		bool int_latched:1;
+		bool int_non_latched:1;
 		// bool disc_pull_up : 1;
-		bool anym_on_int1 : 1;
+		// bool anym_on_int1 : 1;
 		// bool anym_latch : 1;
-		uint8_t anym_mode : 2;
+		// uint8_t anym_mode : 2;
 	} hw;
 #ifdef CONFIG_BMA456_MEASURE_TEMPERATURE
 	const struct temperature temperature;
@@ -96,7 +97,7 @@ struct bma456_transfer_function {
 	int (*read_data)(const struct device *dev, uint8_t reg_addr,
 			 uint8_t *value, uint32_t len);
 	int (*write_data)(const struct device *dev, uint8_t reg_addr,
-			  uint8_t *value, uint32_t len);
+			  const uint8_t *value, uint32_t len);
 };
 
 typedef struct {
@@ -109,16 +110,16 @@ struct bma456_data {
 	struct bma4_dev bma;
 	const struct bma456_transfer_function *hw_tf;
 
-	union bma456_sample sample;
-	/* current scaling factor, in micro m/s^2 / lsb */
-	uint32_t scale;
+	struct bma4_accel sens_data;
+	/* current scaling range */
+	int32_t scale;
 
 #ifdef CONFIG_BMA456_MEASURE_TEMPERATURE
 	struct sensor_value temperature;
 #endif
 
 #ifdef CONFIG_PM_DEVICE
-	uint8_t reg_ctrl1_active_val;
+	uint8_t adv_pwr_save;
 #endif
 
 #ifdef CONFIG_BMA456_TRIGGER
