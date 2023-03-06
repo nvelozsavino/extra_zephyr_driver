@@ -30,6 +30,7 @@ enum bma456_attribute {
 #define BMA456_TRIGGER_TAP 			(1<<3)
 #define BMA456_TRIGGER_DOUBLE_TAP 	(1<<4)
 
+
 #define BMA456_INT1_TRIGGERS { \
 	0,  /* Both int1 and int2 disabled */ \
 	(BMA456_TRIGGER_DATA_READY|BMA456_TRIGGER_ANY_MOTION|BMA456_TRIGGER_NO_MOTION|BMA456_TRIGGER_TAP|BMA456_TRIGGER_DOUBLE_TAP), /* only int1 enabled */ \
@@ -127,18 +128,19 @@ struct bma456_data {
 	struct gpio_callback gpio_int1_cb;
 	struct gpio_callback gpio_int2_cb;
 
-	bma456_trigger_t data_ready; 
-	bma456_trigger_t no_motion; 
-	bma456_trigger_t any_motion; 
-	bma456_trigger_t tap; 
-	bma456_trigger_t double_tap; 
-
+	struct {
+		bma456_trigger_t data_ready; 
+		bma456_trigger_t no_motion; 
+		bma456_trigger_t any_motion; 
+		bma456_trigger_t tap; 
+		bma456_trigger_t double_tap; 
+	} handlers;
 	uint8_t int1_triggers;
 	uint8_t int2_triggers;
 
 	// sensor_trigger_handler_t handler_drdy;
 	// sensor_trigger_handler_t handler_anymotion;
-	// atomic_t trig_flags;
+	atomic_t trig_flags;
 	// enum sensor_channel chan_drdy;
 
 #if defined(CONFIG_BMA456_TRIGGER_OWN_THREAD)

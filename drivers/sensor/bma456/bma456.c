@@ -209,7 +209,7 @@ static int bma456_freq_to_odr_val(const struct sensor_value *val)
 	size_t i;
 	int32_t freq = SENSOR_TO_MEG(val);
 	for (i = 0; i < ARRAY_SIZE(bma456_odr_map); i++) {
-		bma456_freq_code_t* freq_code = &bma456_odr_map[i];
+		const bma456_freq_code_t* freq_code = &bma456_odr_map[i];
 		if (freq == freq_code->freq) {
 			
 			return i;
@@ -458,7 +458,7 @@ static const struct sensor_driver_api bma456_driver_api = {
 static BMA4_INTF_RET_TYPE bma4_bus_read(uint8_t reg_addr, uint8_t *read_data, uint32_t len, void *intf_ptr){
 	const struct device *dev = intf_ptr;
 	struct bma456_data *bma456 = dev->data;
-	const struct bma456_config *cfg = dev->config;
+	// const struct bma456_config *cfg = dev->config;
 
 	
 	int err = bma456->hw_tf->read_data(dev,reg_addr,read_data,len);

@@ -26,10 +26,14 @@
 #endif
 
 
-#define START_TRIG_INT1			0
-#define START_TRIG_INT2			1
-#define TRIGGED_INT1			4
-#define TRIGGED_INT2			5
+// #define TRIGGED_INT1			4
+// #define TRIGGED_INT2			5
+
+#define START_TRIG_INT1			(0)
+#define START_TRIG_INT2			(1)
+
+#define TRIGGED_INT1			(2)
+#define TRIGGED_INT2			(3)
 
 LOG_MODULE_DECLARE(bma456, CONFIG_SENSOR_LOG_LEVEL);
 #include "bma456.h"
@@ -116,7 +120,7 @@ static int bma456_trigger_drdy_set(const struct device *dev,
     accel_conf.perf_mode = BMA4_CIC_AVG_MODE;
 
     /* Set the accel configurations */
-    rslt = bma4_set_accel_config(&accel_conf, &bma);
+    int8_t rslt = bma4_set_accel_config(&accel_conf, &bma);
     bma4_error_codes_print_result("bma4_set_accel_config status", rslt);
 
     /* NOTE : Enable accel after set of configurations */
@@ -136,17 +140,26 @@ static int bma456_trigger_drdy_set(const struct device *dev,
 		return -EIO;
 	}
 
-	bma456->handler_drdy = handler;
+	bma456->handlers.data_ready.handler = handler;
 	if ((handler == NULL) || (status < 0)) {
 		return status;
 	}
 
-	bma456->chan_drdy = chan;
+	bma456->handlers.data_ready.chan = chan;
 
 	/* serialize start of int1 in thread to synchronize output sampling
 	 * and first interrupt. this avoids concurrent bus context access.
 	 */
-	atomic_set_bit(&bma456->trig_flags, START_TRIG_INT1);
+	if (bma456->int1_triggers& BMA456_TRIGGER_DATA_READY){
+		atomic_set_bit(&bma456->trig_flags, START_TRIG_INT1);
+		// bma456_start_trigger_int1(dev,true);
+	}
+	if (bma456->int2_triggers& BMA456_TRIGGER_DATA_READY){
+		atomic_set_bit(&bma456->trig_flags, START_TRIG_INT2);
+		setup_int2(dev,true);
+	}
+
+	// atomic_set_bit(&bma456->trig_flags, START_TRIG_INT1);
 #if defined(CONFIG_BMA456_TRIGGER_OWN_THREAD)
 	k_sem_give(&bma456->gpio_sem);
 #elif defined(CONFIG_BMA456_TRIGGER_GLOBAL_THREAD)
@@ -285,13 +298,15 @@ int bma456_trigger_set(const struct device *dev,
 		       const struct sensor_trigger *trig,
 		       sensor_trigger_handler_t handler)
 {
-	if (trig->type == SENSOR_TRIG_DATA_READY) {
-		return bma456_trigger_drdy_set(dev, trig->chan, handler);
-	} else if (trig->type == SENSOR_TRIG_DELTA) {
-		return bma456_trigger_anym_set(dev, handler);
+	switch (trig->type){
+		case SENSOR_TRIG_DATA_READY:
+			return bma456_trigger_drdy_set(dev, trig->chan, handler);
+		case SENSOR_TRIG_DELTA:
+			return bma456_trigger_anym_set(dev, handler);
+		case SENSOR_TRIG_TAP:
+		default:
+		return -ENOTSUP;
 	}
-
-	return -ENOTSUP;
 }
 
 // int bma456_acc_slope_config(const struct device *dev,
@@ -399,91 +414,108 @@ static void bma456_thread_cb(const struct device *dev)
 {
 	struct bma456_data *bma456 = dev->data;
 	const struct bma456_config *cfg = dev->config;
-	int status;
+	struct bma4_dev *bma = &bma456->bma;
 
-	if (cfg->gpio_drdy.port &&
-			unlikely(atomic_test_and_clear_bit(&bma456->trig_flags,
-			START_TRIG_INT1))) {
-		status = bma456_start_trigger_int1(dev);
-
-		if (unlikely(status < 0)) {
-			LOG_ERR("bma456_start_trigger_int1: %d", status);
-		}
-		return;
-	}
-
-	if (cfg->gpio_int.port &&
-			unlikely(atomic_test_and_clear_bit(&bma456->trig_flags,
-			START_TRIG_INT2))) {
-		status = bma456_start_trigger_int2(dev);
-
-		if (unlikely(status < 0)) {
-			LOG_ERR("bma456_start_trigger_int2: %d", status);
-		}
-		return;
-	}
-
-	if (cfg->gpio_drdy.port &&
+	bool int1=false;
+	bool int2=false;
+	int8_t rslt;
+	if (cfg->gpio_int1.port &&
 			atomic_test_and_clear_bit(&bma456->trig_flags,
 			TRIGGED_INT1)) {
-		struct sensor_trigger drdy_trigger = {
-			.type = SENSOR_TRIG_DATA_READY,
-			.chan = bma456->chan_drdy,
-		};
-
-		if (likely(bma456->handler_drdy != NULL)) {
-			bma456->handler_drdy(dev, &drdy_trigger);
-
-		}
-
-		/* Reactivate level triggered interrupt if handler did not
-		 * disable itself
-		 */
-		if (likely(bma456->handler_drdy != NULL)) {
-			setup_int1(dev, true);
-		}
-
-		return;
+				int1=true;
 	}
-
-	if (cfg->gpio_int.port &&
+	if (cfg->gpio_int2.port &&
 			atomic_test_and_clear_bit(&bma456->trig_flags,
 			TRIGGED_INT2)) {
-		struct sensor_trigger anym_trigger = {
-			.type = SENSOR_TRIG_DELTA,
-			.chan = bma456->chan_drdy,
-		};
-		uint8_t reg_val;
+				int2=true;
+	}
+	do {
 
-		if (cfg->hw.anym_latch) {
-			/* clear interrupt to de-assert int line */
-			status = bma456->hw_tf->read_reg(dev,
-							 cfg->hw.anym_on_int1 ?
-								BMA456_REG_INT1_SRC :
-								BMA456_REG_INT2_SRC,
-							 &reg_val);
-			if (status < 0) {
-				LOG_ERR("clearing interrupt 2 failed: %d", status);
-				return;
+
+		uint16_t int_status=0;
+		if (int1 || int2){
+			rslt = bma4_read_int_status(&int_status,bma);
+			if (rslt!=BMA4_OK){
+				LOG_WRN("Error reading int status %d",rslt);
+				break;
+			}
+		}
+		if (int_status & BMA4_ACCEL_DATA_RDY_INT){
+			if (bma456->handlers.data_ready.handler!=NULL){
+				struct sensor_trigger drdy_trigger = {
+					.type = SENSOR_TRIG_DATA_READY,
+					.chan = bma456->handlers.data_ready.chan,
+				};
+				bma456->handlers.data_ready.handler(dev,&drdy_trigger);
+			}
+			//handle_data_ready
+		}
+		if (int_status & BMA456MM_TAP_OUT_INT){
+ 			struct bma456mm_out_state tap_out = { 0 };
+			int rslt = bma456mm_output_state(&tap_out, bma);
+
+			if (BMA4_OK == rslt){
+				/* Enters only if the obtained interrupt is single-tap */
+				if (tap_out.s_tap){
+					//handle tap
+					if (bma456->handlers.tap.handler!=NULL){
+						struct sensor_trigger tap_trigger = {
+							.type = SENSOR_TRIG_TAP,
+							.chan = bma456->handlers.tap.chan,
+						};
+						bma456->handlers.tap.handler(dev,&tap_trigger);
+					}
+				}
+				/* Enters only if the obtained interrupt is double-tap */
+				else if (tap_out.d_tap){
+					//handle double_tap
+					if (bma456->handlers.double_tap.handler!=NULL){
+						struct sensor_trigger double_tap_trigger = {
+							.type = SENSOR_TRIG_DOUBLE_TAP,
+							.chan = bma456->handlers.double_tap.chan,
+						};
+						bma456->handlers.double_tap.handler(dev,&double_tap_trigger);
+					}
+				}			
+			} else {
+				LOG_WRN("Eror trying to get output state %d",rslt);
+			}
+
+		}
+
+		if (int_status & BMA456MM_ANY_MOT_INT){
+			//Handle Any motion
+			if (bma456->handlers.any_motion.handler!=NULL){
+				struct sensor_trigger any_motion_trigger = {
+					.type = SENSOR_TRIG_MOTION,
+					.chan = bma456->handlers.any_motion.chan,
+				};
+				bma456->handlers.any_motion.handler(dev,&any_motion_trigger);
 			}
 		}
 
-		if (likely(bma456->handler_anymotion != NULL)) {
-			bma456->handler_anymotion(dev, &anym_trigger);
+                /* Enters only if the obtained interrupt is no-motion */
+		if (int_status & BMA456MM_NO_MOT_INT){
+			//Handle No motion
+			if (bma456->handlers.no_motion.handler!=NULL){
+				struct sensor_trigger no_motion_trigger = {
+					.type = SENSOR_TRIG_STATIONARY,
+					.chan = bma456->handlers.no_motion.chan,
+				};
+				bma456->handlers.no_motion.handler(dev,&no_motion_trigger);
+			}
 		}
+		
 
-		/* Reactivate level triggered interrupt if handler did not
-		 * disable itself
-		 */
-		if (bma456->handler_anymotion != NULL) {
-			setup_int2(dev, true);
-		}
+	} while (0);
 
-		LOG_DBG("@tick=%u int2_src=0x%x", k_cycle_get_32(),
-			    reg_val);
-
-		return;
+	if (int1){
+		setup_int1(dev,true);
 	}
+	if (int2){
+		setup_int2(dev,true);
+	}
+
 }
 
 #ifdef CONFIG_BMA456_TRIGGER_OWN_THREAD
@@ -520,6 +552,9 @@ int bma456_init_interrupt(const struct device *dev)
 		LOG_ERR("Interrupt disable reg write failed (%d)", rslt);
 		return -EIO;
 	}
+	
+	
+	/* set latched or non-latched interrupts */
 
 	rslt = bma4_set_interrupt_mode(cfg->hw.int_non_latched?BMA4_NON_LATCH_MODE:BMA4_LATCH_MODE,&bma);
 	if (rslt != BMA4_OK) {
