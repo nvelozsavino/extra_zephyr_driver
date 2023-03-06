@@ -10,7 +10,10 @@
     { \
         .name = #_pin, .dt_spec = GPIO_DT_SPEC_GET(DT_PATH(zephyr_user), _pin##_gpios), \
     }
-
+#define APP_PIN_INIT_BY_NODE(_node,_pin) \
+    { \
+        .name = #_pin, .dt_spec = GPIO_DT_SPEC_GET(DT_NODELABEL(_node), _pin##_gpios), \
+    }
 /*
 // .name = (_pin), \
 // .label = DT_GPIO_LABEL(DT_N_S_ZEPHYR_USER_NODE,_pin##_gpios), \
