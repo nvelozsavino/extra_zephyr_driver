@@ -20,7 +20,6 @@ LOG_MODULE_DECLARE(st95hf, CONFIG_NFC_LOG_LEVEL);
 #include "st95hf.h"
 
 
-
 static void st95hf_gpio_irq_out_callback(const struct device *dev,
 				      struct gpio_callback *cb, uint32_t pins)
 {
@@ -34,6 +33,7 @@ static void st95hf_gpio_irq_out_callback(const struct device *dev,
 	// 	// k_sem_give(&st95hf->tx_sem);
 	// } else {
 	// 	// IRQ_OUT went to LOW => Data is ready to be read
+	
 		k_sem_give(&st95hf->rx_sem);
 	// }
 

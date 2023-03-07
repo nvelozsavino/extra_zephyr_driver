@@ -17,6 +17,28 @@ LOG_MODULE_REGISTER(st95hf, CONFIG_NFC_LOG_LEVEL);
 #include "st95hf.h"
 
 
+int st95hf_stop_waiting(const struct device* dev, bool force, bool pulse_irq){
+	st95hf_data_t *st95hf = dev->data;
+	if (!force && !pulse_irq ){
+		return -EINVAL;
+	}
+	if (force){
+#ifdef CONFIG_ST95HF_TRIGGER		
+		//wait for response
+
+		k_sem_give(&st95hf->rx_sem);
+#else	
+		st95hf->user_stop=true;
+#endif
+	}
+
+	if (pulse_irq){
+		return st95hf_wakeup(dev);
+	}
+	return 0;
+}
+
+
 int st95hf_poll(const struct device *dev,k_timeout_t timeout){
 
 	st95hf_data_t *st95hf = dev->data;
@@ -24,6 +46,7 @@ int st95hf_poll(const struct device *dev,k_timeout_t timeout){
 	
 	#ifdef CONFIG_ST95HF_TRIGGER		
 		//wait for response
+
 		err = k_sem_take(&st95hf->rx_sem,timeout);
 	#else	
 	const st95hf_config_t *cfg = dev->config;
@@ -58,8 +81,8 @@ int st95hf_poll(const struct device *dev,k_timeout_t timeout){
 			.count = 1
 		};
 		uint64_t end = sys_clock_timeout_end_calc(timeout);
-
-    	while (end > k_uptime_ticks()) {
+		st95hf->user_stop=false;
+    	while (end > k_uptime_ticks() && !st95hf->user_stop) {
 			err = spi_transceive_dt(&cfg->bus,&tx,&rx);
 			if (err!=0){
 				err=-EIO;
@@ -77,8 +100,14 @@ int st95hf_poll(const struct device *dev,k_timeout_t timeout){
 	/* Our device is flagged with SPI_HOLD_ON_CS|SPI_LOCK_ON, release */
 	spi_release_dt(&cfg->bus);
 
-	if (err==0 && timeout_expired){
-		return -ETIMEDOUT;
+	if (err==0){
+		if (st95hf->user_stop){
+			return -EAGAIN;
+		}
+		if(timeout_expired){
+			return -ETIMEDOUT;
+		} 
+
 	}
 	#endif
 
@@ -300,6 +329,7 @@ int st95hf_wakeup(const struct device* dev){
 }
 
 int st95hf_idn_cmd(const struct device* dev, st95hf_rsp_t *rsp, st95hf_idn_data_t* data,k_timeout_t timeout){
+	st95hf_data_t *st95hf = dev->data;
 	st95hf_req_t request = {
 		.cmd = ST95HF_CMD_IDN,
 		.len = 0,
@@ -309,10 +339,15 @@ int st95hf_idn_cmd(const struct device* dev, st95hf_rsp_t *rsp, st95hf_idn_data_
 		return -EINVAL;
 	}
 	rsp->len = sizeof(st95hf_idn_data_t);
-	return st95hf_req_rsp(dev,&request, rsp, data ,timeout);
+	int err= st95hf_req_rsp(dev,&request, rsp, data ,timeout);
+	if (rsp->result_code!=ST95HF_STATUS_SUCCESS){
+		return err;
+	}
+	return err;
 }
 
 int st95hf_protocol_select_cmd(const struct device* dev, const st95hf_protocol_selection_req_t * req, st95hf_rsp_t *rsp,k_timeout_t timeout){
+	st95hf_data_t *st95hf = dev->data;
 	st95hf_req_t request = {
 		.cmd = ST95HF_CMD_PROTOCOL_SELECTION,
 		.len = 0,
@@ -332,7 +367,11 @@ int st95hf_protocol_select_cmd(const struct device* dev, const st95hf_protocol_s
 			request.data=&req->parameters.reader_iec15693;
 			break;
 		case ST95HF_PROTOCOL_CODE_READER_IEC14443A:
+			
 			request.len=sizeof(st95hf_protocol_reader_iec14443a_t);
+			if (st95hf->ic_version<ST95HF_IC_VERSION_QJE){
+				request.len-=2;
+			}
 			request.data=&req->parameters.reader_iec14443a;
 			break;
 		case ST95HF_PROTOCOL_CODE_READER_IEC14443B:
@@ -584,104 +623,6 @@ int st95hf_echo_cmd(const struct device* dev,k_timeout_t timeout){
 	return 0;
 }
 
-int st95hf_tag_calibration(const struct device* dev, uint8_t wu_period, uint8_t* dac_data_ref){
-
-	if (dac_data_ref==NULL){
-		return -EINVAL;
-	}
-	
-	uint8_t steps[6]  = {0x80, 0x40, 0x20, 0x10, 0x08, 0x04};
-
-	 st95hf_idle_req_t idle_req = {
-        .wakeup_source=ST95HF_WAKEUP_SOURCE_TIME_OUT | ST95HF_WAKEUP_SOURCE_TAG_DETECTION,
-        // .enter_ctrl=ST95HF_ENTER_CTRL_TAG_DETECTOR_CALIBRATION,
-        // .wakeup_ctrl=ST95HF_WAKEUP_CTRL_SLEEP_TAG_DETECTOR_CALIBRATION,
-
-        // .leave_ctrl=ST95HF_LEAVE_CTRL_SLEEP_TAG_DETECTOR_CALIBRATION,
-
-        .enter_ctrl_h=ST95HF_ENTER_CTRL_TAG_DETECTOR_CALIBRATION>>8,
-        .enter_ctrl_l=ST95HF_ENTER_CTRL_TAG_DETECTOR_CALIBRATION&0xFF,
-        .wakeup_ctrl_h=ST95HF_WAKEUP_CTRL_SLEEP_TAG_DETECTOR_CALIBRATION>>8,
-        .wakeup_ctrl_l=ST95HF_WAKEUP_CTRL_SLEEP_TAG_DETECTOR_CALIBRATION&0xFF,
-
-        .leave_ctrl_h=ST95HF_LEAVE_CTRL_SLEEP_TAG_DETECTOR_CALIBRATION>>8,
-        .leave_ctrl_l=ST95HF_LEAVE_CTRL_SLEEP_TAG_DETECTOR_CALIBRATION&0xFF,
-        .wakeup_period=wu_period,
-        .osc_start=0x60, // Recomended value
-        .dac_start=0x60, // Recomended value
-        .dac_data_h=0x00,
-        .dac_data_l=0x00,
-        .swings_count=0x3F, // Recomended value
-        .max_sleep=0x01, // From ST example
-
-    };
-    st95hf_rsp_t rsp;
-    st95hf_idle_data_t data;
-    //>>>0x07 0E 03 A1 00 F8 01 18 00 20 60 60 00 xx 3F 01
-    int err = st95hf_idle_cmd(dev,&idle_req,&rsp,&data,K_SECONDS(3));
-    if (err!=0){
-        LOG_ERR("Error %d. Calibrating",err);
-        return err;
-    }
-    if (rsp.result_code==0x00 && rsp.len==1 && data.byte==ST95HF_WAKEUP_SOURCE_TAG_DETECTION){
-		LOG_INF("Tag Detected with %02x", idle_req.dac_data_h);
-		idle_req.dac_data_h=0xFC;
-		data.byte=0;
-		err = st95hf_idle_cmd(dev,&idle_req,&rsp,&data,K_SECONDS(3));
-		if (err!=0){
-			LOG_ERR("Error %d. Calibrating",err);
-			return err;
-		}
-		if (rsp.result_code==0x00 && rsp.len==1 && data.byte==ST95HF_WAKEUP_SOURCE_TIME_OUT){
-			LOG_INF("Tag Timeout with %02x", idle_req.dac_data_h);
-			LOG_INF("Running Algorithm");
-
-			for(uint8_t i=0; i<6; i++) {					
-				switch(data.byte) {
-					case ST95HF_WAKEUP_SOURCE_TIME_OUT:
-						LOG_INF("Tag Timeout with %02x step %d", idle_req.dac_data_h,i);
-
-						idle_req.dac_data_h-= steps[i];
-						break;
-				
-					case ST95HF_WAKEUP_SOURCE_TAG_DETECTION:
-						LOG_INF("Tag Detected with %02x step %d", idle_req.dac_data_h,i);
-
-						idle_req.dac_data_h+= steps[i];
-						break;
-				
-					default:
-						return -EINVAL;
-				}
-				data.byte=0;
-				err = st95hf_idle_cmd(dev,&idle_req,&rsp,&data,K_SECONDS(3));
-				if (err!=0){
-					LOG_ERR("Error %d. Calibrating",err);
-					return err;
-				}
-			}
-		} else {
-			LOG_INF("Tag Detected with %02x", idle_req.dac_data_h);
-			return -EIO;
-		}
-		
-		LOG_INF("Finish Algorithm %02x, %02x",data.byte,idle_req.dac_data_h);
-		if (rsp.result_code==0x00 && rsp.len==1 && data.byte==ST95HF_WAKEUP_SOURCE_TIME_OUT){
-			LOG_INF("Tag Timeout with %02x last step", idle_req.dac_data_h);
-
-			*dac_data_ref = (idle_req.dac_data_h -0x04) ;
-		}else{
-			LOG_INF("Tag Detected with %02x last step", idle_req.dac_data_h);
-
-			*dac_data_ref = idle_req.dac_data_h ;
-		}
-		return 0;
-    } else {
-        LOG_ERR("Calibration failed %02x",rsp.result_code);
-    }
-	return -EIO;
-}
-
 int st95hf_req_rsp(const struct device* dev, const st95hf_req_t* req, st95hf_rsp_t* rsp, void* data ,k_timeout_t timeout){
 	// st95hf_data_t *st95hf = dev->data;
 	// const st95hf_config_t *cfg = dev->config;
@@ -726,7 +667,7 @@ int st95hf_init(const struct device *dev)
 // 					.gpio_irq_in =GPIO_DT_SPEC_INST_GET(0, irq_in_gpios),
 // };
 
-	// st95hf_data_t *st95hf = dev->data;
+	st95hf_data_t *st95hf = dev->data;
 	const st95hf_config_t *cfg = dev->config;
 	int status;	
 
@@ -772,11 +713,13 @@ int st95hf_init(const struct device *dev)
 	}
 	st95hf_rsp_t rsp;
 	st95hf_idn_data_t idn;
+	st95hf->ic_version=ST95HF_IC_VERSION_UNKNOWN;
 	status = st95hf_idn_cmd(dev,&rsp,&idn,K_MSEC(10));
 	if (status < 0) {
 		LOG_ERR("Failed to read chip id. %d",status);
 		return status;
 	}
+	st95hf->ic_version = idn.device_id[11];
 	if (rsp.result_code!=0){
 		LOG_ERR("Failed to get IDN Err. %02x",rsp.result_code);
 		return -EIO;
