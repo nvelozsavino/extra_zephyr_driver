@@ -102,7 +102,7 @@ struct bma456_transfer_function {
 };
 
 typedef struct {
-	enum sensor_channel chan;
+	struct sensor_trigger trigger;
 	sensor_trigger_handler_t handler;
 } bma456_trigger_t;
 
