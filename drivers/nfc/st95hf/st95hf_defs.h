@@ -24,13 +24,13 @@
  * Protocol Codes
 */
 #define ST95HF_PROTOCOL_CODE_READER_FIELD_OFF			0x00
-#define ST95HF_PROTOCOL_CODE_READER_IEC15693			0x01
-#define ST95HF_PROTOCOL_CODE_READER_IEC14443A			0x02
-#define ST95HF_PROTOCOL_CODE_READER_IEC14443B			0x03
-#define ST95HF_PROTOCOL_CODE_READER_IEC18092			0x04
-#define ST95HF_PROTOCOL_CODE_CARD_EMULATION_IEC14443A	0x12
-#define ST95HF_PROTOCOL_CODE_CARD_EMULATION_IEC14443B	0x13
-#define ST95HF_PROTOCOL_CODE_CARD_EMULATION_IEC18092	0x14
+#define ST95HF_PROTOCOL_CODE_READER_ISO15693			0x01
+#define ST95HF_PROTOCOL_CODE_READER_ISO14443A			0x02
+#define ST95HF_PROTOCOL_CODE_READER_ISO14443B			0x03
+#define ST95HF_PROTOCOL_CODE_READER_ISO18092			0x04
+#define ST95HF_PROTOCOL_CODE_CARD_EMULATION_ISO14443A	0x12
+#define ST95HF_PROTOCOL_CODE_CARD_EMULATION_ISO14443B	0x13
+#define ST95HF_PROTOCOL_CODE_CARD_EMULATION_ISO18092	0x14
 
 
 /**
@@ -198,7 +198,7 @@ typedef struct {
 	
 	uint8_t rfu0_7_6:2;			/*	Byte 0 [7..6]:	RFU (reserved for future use) */
 
-} st95hf_protocol_reader_iec15693_t;
+} st95hf_protocol_reader_iso15693_t;
 
 /*
 ISO/IEC 14443 Type A
@@ -237,7 +237,7 @@ typedef struct {
 
 	uint8_t st_reserved[2];		/*	Bytes 5..4 		(optional) */	
 	
-} st95hf_protocol_reader_iec14443a_t;
+} st95hf_protocol_reader_iso14443a_t;
 
 
 
@@ -280,7 +280,7 @@ typedef struct {
 
 	uint8_t st_reserved[2];		/* 	Bytes 9..8		(optional) */		
 
-} st95hf_protocol_reader_iec14443b_t;
+} st95hf_protocol_reader_iso14443b_t;
 
 
 /*
@@ -328,7 +328,7 @@ typedef struct {
 
 	uint8_t DD;					/*  Byte 4 			(optional to PP:MM) */
 
-} st95hf_protocol_reader_iec18092_t;
+} st95hf_protocol_reader_iso18092_t;
 
 
 
@@ -366,18 +366,18 @@ Card Emulation for ISO/IEC 14443 Type A, Data rate is 106 Kbps for both up- and 
 													10: 424 Kbps
 													11: RFU (reserved for future use)	*/
 
-} st95hf_protocol_emulation_iec14443a_t;
+} st95hf_protocol_emulation_iso14443a_t;
 
 
 typedef struct {
 	uint8_t protocol;			/* Protocol Code */
 	union {
 		st95hf_protocol_reader_field_off_t		field_off;
-		st95hf_protocol_reader_iec15693_t		reader_iec15693;
-		st95hf_protocol_reader_iec14443a_t		reader_iec14443a;
-		st95hf_protocol_reader_iec14443b_t		reader_iec14443b;
-		st95hf_protocol_reader_iec18092_t		reader_iec18092;
-		st95hf_protocol_emulation_iec14443a_t	card_emulation_iec14443a;
+		st95hf_protocol_reader_iso15693_t		reader_iso15693;
+		st95hf_protocol_reader_iso14443a_t		reader_iso14443a;
+		st95hf_protocol_reader_iso14443b_t		reader_iso14443b;
+		st95hf_protocol_reader_iso18092_t		reader_iso18092;
+		st95hf_protocol_emulation_iso14443a_t	card_emulation_iso14443a;
 	} parameters;
 } st95hf_protocol_selection_req_t;
 
@@ -443,7 +443,7 @@ typedef union{
                                                             and use SOF at beginning of each byte. Pause between
                                                             bytes and assume 1st byte is 7 bits. */
     } fields;
-} st95hf_sendrecv_iec14443a_footer_req_t;
+} st95hf_sendrecv_iso14443a_footer_req_t;
 
 
 
@@ -457,7 +457,7 @@ typedef union{
                                                             1: CRC error */
         uint8_t rfu0_7_2:6; 			/* 	Byte 0 [7..2] 	RFU (reserved for future use) */
     } fields;
-} st95hf_sendrecv_iec15693_footer_rsp_t;
+} st95hf_sendrecv_iso15693_footer_rsp_t;
 
 
 
@@ -480,7 +480,7 @@ typedef union{
         uint8_t bit_collision_index:4;	/*	Byte 2 [3..0]	Index of the first bit where collision is detected */
         uint8_t rfu2_7_4:4; 			/* 	Byte 2 [7..4] 	RFU (reserved for future use) */
     } fields;
-} st95hf_sendrecv_iec14443a_footer_rsp_t;
+} st95hf_sendrecv_iso14443a_footer_rsp_t;
 
 
 
@@ -493,10 +493,10 @@ typedef union{
                                                             1: CRC error */
         uint8_t rfu0_7_2:6; 			/* 	Byte 0 [7..2] 	RFU (reserved for future use) */
     } fields;
-} st95hf_sendrecv_iec14443b_footer_rsp_t;
+} st95hf_sendrecv_iso14443b_footer_rsp_t;
 
 
-typedef st95hf_sendrecv_iec14443b_footer_rsp_t st95hf_sendrecv_iec18092_footer_rsp_t;
+typedef st95hf_sendrecv_iso14443b_footer_rsp_t st95hf_sendrecv_iso18092_footer_rsp_t;
 
 
 
@@ -517,7 +517,7 @@ typedef struct{
 	uint8_t rfu0_6:1; 				/* 	Byte 3 [6] 		RFU (reserved for future use) */
 	uint8_t rfu0_7:1; 				/* 	Byte 3 [7] 		RFU (reserved for future use) */
 
-} st95hf_listen_iec14443a_footer_rsp_t;
+} st95hf_listen_iso14443a_footer_rsp_t;
 
 
 /**
@@ -529,7 +529,7 @@ typedef struct{
 	uint8_t rfu0_4:1; 				/* 	Byte 0 [4] 		RFU (reserved for future use) (Do not append parity */
 	uint8_t append_crc:1; 			/* 	Byte 0 [5] 		Append CRC */
 	uint8_t rfu0_7_6:2; 			/* 	Byte 0 [7..6] 	RFU (reserved for future use) */
-} st95hf_send_iec14443a_footer_req_t;
+} st95hf_send_iso14443a_footer_req_t;
 
 /**
  * Idle command (0x07)
@@ -746,24 +746,24 @@ typedef enum {
 
 /*
 #define ST95HF_PROTOCOL_CODE_READER_FIELD_OFF			0x00
-#define ST95HF_PROTOCOL_CODE_READER_IEC15693			0x01
-#define ST95HF_PROTOCOL_CODE_READER_IEC14443A			0x02
-#define ST95HF_PROTOCOL_CODE_READER_IEC14443B			0x03
-#define ST95HF_PROTOCOL_CODE_READER_IEC18092			0x04
-#define ST95HF_PROTOCOL_CODE_CARD_EMULATION_IEC14443A	0x12
-#define ST95HF_PROTOCOL_CODE_CARD_EMULATION_IEC14443B	0x13
-#define ST95HF_PROTOCOL_CODE_CARD_EMULATION_IEC18092	0x14
+#define ST95HF_PROTOCOL_CODE_READER_ISO15693			0x01
+#define ST95HF_PROTOCOL_CODE_READER_ISO14443A			0x02
+#define ST95HF_PROTOCOL_CODE_READER_ISO14443B			0x03
+#define ST95HF_PROTOCOL_CODE_READER_ISO18092			0x04
+#define ST95HF_PROTOCOL_CODE_CARD_EMULATION_ISO14443A	0x12
+#define ST95HF_PROTOCOL_CODE_CARD_EMULATION_ISO14443B	0x13
+#define ST95HF_PROTOCOL_CODE_CARD_EMULATION_ISO18092	0x14
 */
 typedef enum {
 	ST95HF_PROTOCOL_UNKNOWN = 0,
-	ST95HF_PROTOCOL_READER_IEC14443A,
-	ST95HF_PROTOCOL_READER_IEC14443B,
-	ST95HF_PROTOCOL_READER_IEC15693,
-	ST95HF_PROTOCOL_READER_IEC18092,
-	ST95HF_PROTOCOL_CARD_EMULATION_IEC14443A,
-	ST95HF_PROTOCOL_CARD_EMULATION_IEC14443B,
-	ST95HF_PROTOCOL_CARD_EMULATION_IEC15693,
-	ST95HF_PROTOCOL_CARD_EMULATION_IEC18092,
+	ST95HF_PROTOCOL_READER_ISO14443A,
+	ST95HF_PROTOCOL_READER_ISO14443B,
+	ST95HF_PROTOCOL_READER_ISO15693,
+	ST95HF_PROTOCOL_READER_ISO18092,
+	ST95HF_PROTOCOL_CARD_EMULATION_ISO14443A,
+	ST95HF_PROTOCOL_CARD_EMULATION_ISO14443B,
+	ST95HF_PROTOCOL_CARD_EMULATION_ISO15693,
+	ST95HF_PROTOCOL_CARD_EMULATION_ISO18092,
 } st95hf_protocol_t;	
 
 

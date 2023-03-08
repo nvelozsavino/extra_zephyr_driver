@@ -362,33 +362,33 @@ int st95hf_protocol_select_cmd(const struct device* dev, const st95hf_protocol_s
 			request.len=sizeof(st95hf_protocol_reader_field_off_t);
 			request.data=&req->parameters.field_off;
 			break;
-		case ST95HF_PROTOCOL_CODE_READER_IEC15693:
-			request.len=sizeof(st95hf_protocol_reader_iec15693_t);
-			request.data=&req->parameters.reader_iec15693;
+		case ST95HF_PROTOCOL_CODE_READER_ISO15693:
+			request.len=sizeof(st95hf_protocol_reader_iso15693_t);
+			request.data=&req->parameters.reader_iso15693;
 			break;
-		case ST95HF_PROTOCOL_CODE_READER_IEC14443A:
+		case ST95HF_PROTOCOL_CODE_READER_ISO14443A:
 			
-			request.len=sizeof(st95hf_protocol_reader_iec14443a_t);
+			request.len=sizeof(st95hf_protocol_reader_iso14443a_t);
 			if (st95hf->ic_version<ST95HF_IC_VERSION_QJE){
 				request.len-=2;
 			}
-			request.data=&req->parameters.reader_iec14443a;
+			request.data=&req->parameters.reader_iso14443a;
 			break;
-		case ST95HF_PROTOCOL_CODE_READER_IEC14443B:
-			request.len=sizeof(st95hf_protocol_reader_iec14443b_t);
-			request.data=&req->parameters.reader_iec14443b;
+		case ST95HF_PROTOCOL_CODE_READER_ISO14443B:
+			request.len=sizeof(st95hf_protocol_reader_iso14443b_t);
+			request.data=&req->parameters.reader_iso14443b;
 			break;
-		case ST95HF_PROTOCOL_CODE_READER_IEC18092:
-			request.len=sizeof(st95hf_protocol_reader_iec18092_t);
-			request.data=&req->parameters.reader_iec18092;
+		case ST95HF_PROTOCOL_CODE_READER_ISO18092:
+			request.len=sizeof(st95hf_protocol_reader_iso18092_t);
+			request.data=&req->parameters.reader_iso18092;
 			break;
-		case ST95HF_PROTOCOL_CODE_CARD_EMULATION_IEC14443A:
-			request.len=sizeof(st95hf_protocol_emulation_iec14443a_t);
-			request.data=&req->parameters.card_emulation_iec14443a;
+		case ST95HF_PROTOCOL_CODE_CARD_EMULATION_ISO14443A:
+			request.len=sizeof(st95hf_protocol_emulation_iso14443a_t);
+			request.data=&req->parameters.card_emulation_iso14443a;
 			break;
-		case ST95HF_PROTOCOL_CODE_CARD_EMULATION_IEC14443B:
+		case ST95HF_PROTOCOL_CODE_CARD_EMULATION_ISO14443B:
 			return -EINVAL;
-		case ST95HF_PROTOCOL_CODE_CARD_EMULATION_IEC18092:
+		case ST95HF_PROTOCOL_CODE_CARD_EMULATION_ISO18092:
 			return -EINVAL;
 		default:
 			return -EINVAL;

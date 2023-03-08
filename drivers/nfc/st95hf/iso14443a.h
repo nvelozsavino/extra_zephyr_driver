@@ -1,6 +1,7 @@
 #pragma once
 
 #include <zephyr/types.h>
+#include <zephyr/device.h>
 #include <stdbool.h>
 
 /*  status and error code ---------------------------------------------------------------------- */
@@ -111,12 +112,12 @@
 
 typedef struct {
     uint8_t data[ISO14443A_ATQA_SIZE];
-} iec14443a_atqa_t;
+} iso14443a_atqa_t;
 
 
 typedef struct{
 	/* ATQA answer to request of type A*/
-	iec14443a_atqa_t 	atqa;
+	iso14443a_atqa_t 	atqa;
 	uint8_t 	cascade_level;
 	/* UID : unique Identification*/
 	uint8_t 	uid_size;
@@ -130,16 +131,27 @@ typedef struct{
 	uint8_t 	fsdi;
 	uint8_t 	dri;
 	uint8_t 	dsi;
-}iec14443a_card_t;
+}iso14443a_card_t;
 
 #pragma pack(push,1)
 typedef struct {
     uint8_t uid[4];
     uint8_t bcc;
-} iec14443a_anticollision_t;
+} iso14443a_anticollision_t;
 
 typedef struct {
 	uint16_t fwi;
 	uint16_t fsc;	
-} iec14443a_rats_t;
+} iso14443a_rats_t;
 #pragma pack(pop)
+
+
+
+
+int st95hf_iso14443a_init(const struct device* dev);
+
+int st95hf_iso14443a_is_present(const struct device* dev,iso14443a_card_t* card);
+
+int st95hf_iso14443a_check_type1(const struct device* dev);
+
+int st95hf_iso14443a_anticollision(const struct device* dev, iso14443a_card_t* card);
