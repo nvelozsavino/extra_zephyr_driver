@@ -36,20 +36,20 @@
 /**
  * Error codes
 */
-#define ST95HF_STATUS_SUCCESS					0x00		
-#define ST95HF_ERROR_CODE_FRAME_RECV_OK			0x80		/* EFrameRecvOK		Frame correctly received (additionally see CRC/Parity information) */ 
-#define ST95HF_ERROR_CODE_USER_STOP				0x85		/* EUserStop		Stopped by user (used only in Card mode) */ 
-#define ST95HF_ERROR_CODE_COMM_ERROR			0x86		/* ECommError		Hardware communication error */ 
-#define ST95HF_ERROR_CODE_FRAME_WAIT_TIME_OUT	0x87		/* EFrameWaitTOut	Frame wait time out (no valid reception) */ 
-#define ST95HF_ERROR_CODE_INVALID_SOF			0x88		/* EInvalidSof		Invalid SOF */ 
-#define ST95HF_ERROR_CODE_BUFFER_OVERFLOW		0x89		/* EBufOverflow		Too many bytes received and data still arriving */ 
-#define ST95HF_ERROR_CODE_FRAMING_ERROR			0x8A		/* EFramingError	if start bit = 1 or stop bit = 0 */ 
-#define ST95HF_ERROR_CODE_EGT_ERROR				0x8B		/* EEgtError		EGT time out */ 
-#define ST95HF_ERROR_CODE_INVALID_LEN			0x8C		/* EInvalidLen		Valid for ISO/IEC 18092, if Length <3 */ 
-#define ST95HF_ERROR_CODE_CRC_ERROR				0x8D		/* ECrcError		CRC error, Valid only for ISO/IEC 18092 */ 
-#define ST95HF_ERROR_CODE_RECV_LOST				0x8E		/* ERecvLost		hen reception is lost without EOF received (or subcarrier was lost) */ 
-#define ST95HF_ERROR_CODE_NO_FIELD				0x8F		/* ENoField			When Listen command detects the absence of external field */ 
-#define ST95HF_ERROR_CODE_UNINT_BYTE			0x90		/* EUnintByte		Residual bits in last byte. Useful for ACK/NAK reception of ISO/IEC 14443 Type A. */ 
+#define ST95HF_STATUS_CODE_SUCCESS				0x00		
+#define ST95HF_STATUS_CODE_FRAME_RECV_OK		0x80		/* EFrameRecvOK		Frame correctly received (additionally see CRC/Parity information) */ 
+#define ST95HF_STATUS_CODE_USER_STOP			0x85		/* EUserStop		Stopped by user (used only in Card mode) */ 
+#define ST95HF_STATUS_CODE_COMM_ERROR			0x86		/* ECommError		Hardware communication error */ 
+#define ST95HF_STATUS_CODE_FRAME_WAIT_TIME_OUT	0x87		/* EFrameWaitTOut	Frame wait time out (no valid reception) */ 
+#define ST95HF_STATUS_CODE_INVALID_SOF			0x88		/* EInvalidSof		Invalid SOF */ 
+#define ST95HF_STATUS_CODE_BUFFER_OVERFLOW		0x89		/* EBufOverflow		Too many bytes received and data still arriving */ 
+#define ST95HF_STATUS_CODE_FRAMING_ERROR		0x8A		/* EFramingError	if start bit = 1 or stop bit = 0 */ 
+#define ST95HF_STATUS_CODE_EGT_ERROR			0x8B		/* EEgtError		EGT time out */ 
+#define ST95HF_STATUS_CODE_INVALID_LEN			0x8C		/* EInvalidLen		Valid for ISO/IEC 18092, if Length <3 */ 
+#define ST95HF_STATUS_CODE_CRC_ERROR			0x8D		/* ECrcError		CRC error, Valid only for ISO/IEC 18092 */ 
+#define ST95HF_STATUS_CODE_RECV_LOST			0x8E		/* ERecvLost		hen reception is lost without EOF received (or subcarrier was lost) */ 
+#define ST95HF_STATUS_CODE_NO_FIELD				0x8F		/* ENoField			When Listen command detects the absence of external field */ 
+#define ST95HF_STATUS_CODE_UNINT_BYTE			0x90		/* EUnintByte		Residual bits in last byte. Useful for ACK/NAK reception of ISO/IEC 14443 Type A. */ 
 
 
 /**
@@ -474,10 +474,10 @@ typedef union{
         uint8_t collision_detect:1;		/*	Byte 0 [7]		0: Colision is not detected 
                                                             1: Colision is detected*/
         
-        uint8_t	first_collision_byte;	/* 	Byte 1:			Index of the first byte where collision is detected */														
+        uint8_t	byte_collision_index;	/* 	Byte 1:			Index of the first byte where collision is detected */														
 
 
-        uint8_t first_collision_bit:4;	/*	Byte 2 [3..0]	Index of the first bit where collision is detected */
+        uint8_t bit_collision_index:4;	/*	Byte 2 [3..0]	Index of the first bit where collision is detected */
         uint8_t rfu2_7_4:4; 			/* 	Byte 2 [7..4] 	RFU (reserved for future use) */
     } fields;
 } st95hf_sendrecv_iec14443a_footer_rsp_t;
@@ -664,7 +664,7 @@ typedef struct {
 #define ST95HF_WREG_ADDR_TIMER_WINDOW           0x3A
 #define ST95HF_WREG_ADDR_AUTO_DETECT            0x0A
 #define ST95HF_WREG_FLAG_NOT_INCREMENT          0x00
-#define ST95HF_WREG_FLAG_INCREMENT_AFTER_WRITE  0x00
+#define ST95HF_WREG_FLAG_INCREMENT_AFTER_WRITE  0x01
 
 typedef struct {
 	uint8_t reg_addr;			/* 	Byte 0:	Register Address 	0x68: for AAC_A or ARC_B
@@ -728,6 +728,21 @@ typedef enum {
 	ST95HF_MODE_ACTIVEP2P ,
 } st95hf_mode_t;
 
+
+typedef enum {
+	ST95HF_DEVICE_MODE_UNDEFINED=0,
+	ST95HF_DEVICE_MODE_PICC,
+	ST95HF_DEVICE_MODE_PCD
+} st95hf_device_mode_t;
+typedef enum {
+	ST95HF_TAG_TYPE_UNDEFINED=0,
+	ST95HF_TAG_TYPE_TT1,
+	ST95HF_TAG_TYPE_TT2,
+	ST95HF_TAG_TYPE_TT3,
+	ST95HF_TAG_TYPE_TT4A,
+	ST95HF_TAG_TYPE_TT4B,
+	ST95HF_TAG_TYPE_TT5
+} st95hf_tag_type_t;
 
 /*
 #define ST95HF_PROTOCOL_CODE_READER_FIELD_OFF			0x00

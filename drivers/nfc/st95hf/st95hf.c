@@ -329,7 +329,7 @@ int st95hf_wakeup(const struct device* dev){
 }
 
 int st95hf_idn_cmd(const struct device* dev, st95hf_rsp_t *rsp, st95hf_idn_data_t* data,k_timeout_t timeout){
-	st95hf_data_t *st95hf = dev->data;
+	// st95hf_data_t *st95hf = dev->data;
 	st95hf_req_t request = {
 		.cmd = ST95HF_CMD_IDN,
 		.len = 0,
@@ -340,7 +340,7 @@ int st95hf_idn_cmd(const struct device* dev, st95hf_rsp_t *rsp, st95hf_idn_data_
 	}
 	rsp->len = sizeof(st95hf_idn_data_t);
 	int err= st95hf_req_rsp(dev,&request, rsp, data ,timeout);
-	if (rsp->result_code!=ST95HF_STATUS_SUCCESS){
+	if (rsp->result_code!=ST95HF_STATUS_CODE_SUCCESS){
 		return err;
 	}
 	return err;
@@ -776,7 +776,7 @@ int st95hf_init(const struct device *dev)
 #define ST95HF_DEFINE(inst)	  					\
 	static st95hf_data_t st95hf_data_##inst; \
 	static const st95hf_config_t st95hf_config_##inst =	 ST95HF_CONFIG(inst);  \
-	SENSOR_DEVICE_DT_INST_DEFINE(inst,				\
+	NFC_DEVICE_DT_INST_DEFINE(inst,				\
 	 	st95hf_init,				\
 	 	NULL,		\
 	 	&st95hf_data_##inst,			\

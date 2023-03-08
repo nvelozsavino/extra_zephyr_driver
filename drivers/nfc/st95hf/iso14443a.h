@@ -130,4 +130,16 @@ typedef struct{
 	uint8_t 	fsdi;
 	uint8_t 	dri;
 	uint8_t 	dsi;
-}iec14443A_card_t;
+}iec14443a_card_t;
+
+#pragma pack(push,1)
+typedef struct {
+    uint8_t uid[4];
+    uint8_t bcc;
+} iec14443a_anticollision_t;
+
+typedef struct {
+	uint16_t fwi;
+	uint16_t fsc;	
+} iec14443a_rats_t;
+#pragma pack(pop)

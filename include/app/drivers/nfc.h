@@ -85,21 +85,14 @@ typedef int (*nfc_ndef_read_t)(const struct device *dev,
 typedef int (*nfc_ndef_read_t)(const struct device *dev,
 				    enum nfc_protocol protocol, uint8_t* ndef_buffer, uint16_t* buffer_size);
 
-#pragma pack(push,1)
-struct nfc_topaz{
-    uint8_t header[2];
-    uint8_t uid[4];
-    uint8_t crc[2];
-};
-#pragma pack(pop)
 
 /**
- * @typedef nfc_topaz_t
- * @brief Callback API for reading NDEF
+ * @typedef nfc_send_receive_t
+ * @brief Callback API for Sending and Receiving data
  *
- * See nfc_topaz_t() for argument description
+ * See nfc_send_receive_t() for argument description
  */
-typedef int (*nfc_topaz_t)(const struct device *dev, struct nfc_topaz* topaz);
+typedef int (*nfc_send_receive_t)(const struct device *dev, const uint8_t* send_data, size_t send_size, uint8_t* rcv_data, size_t* rcv_size);
 
 
 
@@ -108,7 +101,7 @@ __subsystem struct nfc_driver_api {
     nfc_protocol_init_t protocol_init;
     nfc_protocol_is_present_t protocol_is_present;
     nfc_ndef_read_t ndef_read;
-    nfc_topaz_t topaz;
+    nfc_send_receive_t send_receive;
     
 };
 
@@ -203,21 +196,26 @@ static inline int z_impl_nfc_ndef_read(const struct device *dev,
 }
 
 /**
- * @brief Read Topaz data from NFC tag
+ * @brief Send and Receive data from NFC tag
  *
  * @param dev Pointer to the sensor device
- * @param topaz The output buffer for topaz data.
+ * @param send_data The buffer with the data to send.
+ * @param send_size The size of the data to send.
+ * @param rcv_data The buffer for the received data.
+ * @param rcv_size 	The size of the received data, 
+ * 					before calling the function, this 
+ * 					should contain the size of the receive buffer.
  *
  * @return 0 if successful, negative errno code if failure.
  */
-__syscall int nfc_topaz(const struct device *dev, struct nfc_topaz* topaz);
+__syscall int nfc_send_receive(const struct device *dev, const uint8_t* send_data, size_t send_size, uint8_t* rcv_data, size_t* rcv_size);
 
-static inline int z_impl_nfc_topaz(const struct device *dev, struct nfc_topaz* topaz)
+static inline int z_impl_nfc_send_receive(const struct device *dev, const uint8_t* send_data, size_t send_size, uint8_t* rcv_data, size_t* rcv_size)
 {
 	const struct nfc_driver_api *api =
 		(const struct nfc_driver_api *)dev->api;
 
-	return api->topaz(dev, topaz);
+	return api->send_receive(dev, send_data,send_size,rcv_data,rcv_size);
 }
 
 
@@ -316,6 +314,6 @@ struct nfc_info {
 }
 #endif
 
-// #include <syscalls/nfc.h>
+#include <syscalls/nfc.h>
 
 #endif /* ZEPHYR_INCLUDE_DRIVERS_SENSOR_H_ */

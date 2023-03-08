@@ -13,6 +13,7 @@
 #include <stdint.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/sensor.h>
+#include <app/drivers/nfc.h>
 #include <string.h>
 #include <zephyr/drivers/spi.h>
 #include "st95hf_defs.h"
@@ -44,6 +45,8 @@ typedef struct {
 #endif /* CONFIG_ST95HF_TRIGGER */
 	st95hf_ic_version_t ic_version;
 	st95hf_protocol_t current_protocol;
+	st95hf_device_mode_t device_mode;
+	st95hf_tag_type_t tag_type;
 } st95hf_data_t;
 
 #ifdef CONFIG_ST95HF_TRIGGER
@@ -94,6 +97,6 @@ int st95hf_stop_waiting(const struct device* dev, bool force, bool pulse_irq);
  * Functions
 */
 int st95hf_tag_calibration(const struct device* dev, uint8_t wu_period, uint8_t* data_h);
-int st95hf_tag_hunting(const struct device* dev, uint8_t tags_to_find, uint8_t* tags_find);
+int st95hf_tag_hunting(const struct device* dev, uint8_t* tags_type);
 
 #endif /* __SENSOR_ST95HF__ */

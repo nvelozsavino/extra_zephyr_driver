@@ -2,3 +2,5 @@ comment "Extra Module"
 
 rsource "drivers/Kconfig"
 
+config APPLICATION_DEFINED_SYSCALL
+    default y
