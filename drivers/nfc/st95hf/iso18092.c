@@ -4,7 +4,18 @@
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(st95hf_iso18092, CONFIG_NFC_LOG_LEVEL);
 
-int st95hf_iso18092_init(const struct device* dev){
+static void init_card(iso18092_card_t* card){
+   
+    memset(&card->atqc,0x00,sizeof(card->atqc));
+    memset(&card->uid,0x00,sizeof(card->uid));
+    card->is_detected=false;
+}
+
+int st95hf_iso18092_init(const struct device* dev, iso18092_card_t* card){
+    if (card==NULL){        
+        return -EINVAL;
+    }
+    init_card(card);
     st95hf_data_t *st95hf = dev->data;
     st95hf_protocol_selection_req_t protocol_selection_req = { 
         .protocol=ST95HF_PROTOCOL_CODE_READER_ISO18092,
@@ -16,9 +27,9 @@ int st95hf_iso18092_init(const struct device* dev){
             .fwt=1,     //FWT is specified by PP:MM bits
             .PP=0x01,
             .MM=0x0D,
-        }
+        },
+        .options=ST95HF_PROTSEL_READER_ISO18092_OPT_NO_DD
     } ;
-
     st95hf_rsp_t rsp={0};
     int err =  st95hf_protocol_select_cmd(dev,&protocol_selection_req,&rsp,K_SECONDS(3));
     if (err!=0){
@@ -95,16 +106,23 @@ static int st95hf_iso18092_reqc(const struct device* dev, iso18092_atqc_t* atqc)
 }
 
 int st95hf_iso18092_is_present(const struct device* dev,iso18092_card_t* card){
+    st95hf_data_t *st95hf = dev->data;
+    if (card==NULL){
+        return -EINVAL;
+    }
+
     iso18092_atqc_t atqc;
     int err = st95hf_iso18092_reqc(dev,&atqc);
     if (err!=0){
         return err;
-    }
-    if (card!=NULL){
-        card->is_detected=true;
-        memcpy(&card->atqc,&atqc,sizeof(iso18092_atqc_t));
-        memcpy(card->uid,&card->atqc.data[1],sizeof(card->uid));
-    }
+    }    
+    card->is_detected=true;
+    memcpy(&card->atqc,&atqc,sizeof(iso18092_atqc_t));
+    memcpy(card->uid,&card->atqc.data[1],sizeof(card->uid));
+
+    st95hf->device_mode=ST95HF_DEVICE_MODE_PCD;
+    st95hf->tag_type = ST95HF_TAG_TYPE_TT3;
+
     return 0;
 }
 

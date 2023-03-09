@@ -393,6 +393,10 @@ int st95hf_protocol_select_cmd(const struct device* dev, const st95hf_protocol_s
 		default:
 			return -EINVAL;
 	}
+	if (request.len<req->options){
+		return -EINVAL;
+	}
+	request.len-=req->options;
 	rsp->len = 0;
 	return st95hf_req_rsp(dev,&request, rsp, NULL ,timeout);
 }

@@ -115,8 +115,15 @@
 #define ISO14443A_MAX_UID_SIZE			 							10
 #define ISO14443A_ATQA_SIZE												2
 
-typedef struct {
+typedef union {
     uint8_t data[ISO14443A_ATQA_SIZE];
+	struct {
+		uint8_t bit_frame_anticollision:5;		//	Byte 0		Bits 4..0	Bit frame anticollision
+		uint8_t rfu0_6:1;						//	Byte 0		Bit 5		reserved for future use
+		uint8_t uid_size:2;						//	Byte 0		Bits 7..6	UID size bit frame
+		uint8_t proprietary_coding:4;			//	Byte 1		Bits 3..0	Proprietary coding
+		uint8_t rfu1_7_4:4;						//	Byte 1		Bits 7..4	reserved for future use
+	} fields;
 } iso14443a_atqa_t;
 
 
@@ -153,7 +160,7 @@ typedef struct {
 
 
 
-int st95hf_iso14443a_init(const struct device* dev);
+int st95hf_iso14443a_init(const struct device* dev, iso14443a_card_t* card);
 
 int st95hf_iso14443a_is_present(const struct device* dev,iso14443a_card_t* card);
 

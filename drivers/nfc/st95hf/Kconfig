@@ -53,4 +53,17 @@ config ST95HF_THREAD_STACK_SIZE
 config ST95HF_BLOCK_DATA_UPDATE
 	bool "Output registers not updated until MSB and LSB read"
 
+choice ST95HF_READ_MODE
+	prompt "Read mode"
+	default ST95HF_READ_AS_DATASHEET
+	help
+	  Specify the type of reading to be used by the driver, if follows the Datasheet or follows the Demo code
+
+config ST95HF_READ_AS_DATASHEET
+	bool "Read structure as Datasheet"
+
+config ST95HF_READ_AS_DEMO
+	bool "Read structure as demo"
+	
+endchoice
 endif # ST95HF

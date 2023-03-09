@@ -1,6 +1,7 @@
 #include "st95hf.h"
 #include <zephyr/logging/log.h>
 #include "iso14443a.h"
+#include "iso14443b.h"
 #include "iso18092.h"
 LOG_MODULE_REGISTER(st95hf_func, CONFIG_NFC_LOG_LEVEL);
 
@@ -106,7 +107,8 @@ int st95hf_tag_calibration(const struct device* dev, uint8_t wu_period, uint8_t*
 static int st95hf_field_off(const struct device* dev){
     st95hf_protocol_selection_req_t req = {
         .protocol=ST95HF_PROTOCOL_CODE_READER_FIELD_OFF,
-        .parameters.field_off.rfu0=0
+        .parameters.field_off.rfu0=0,
+        .options=ST95HF_PROTSEL_OPT_ALL,
     };
     st95hf_rsp_t rsp;
     int err =  st95hf_protocol_select_cmd(dev,&req,&rsp,K_SECONDS(3));
@@ -126,10 +128,15 @@ int st95hf_tag_hunting(const struct device* dev, uint8_t* tags_type){
     if (dev==NULL || tags_type==NULL){
         return -EINVAL;
     }
+    st95hf_data_t* st95hf = dev->data;
+
+    st95hf->device_mode = ST95HF_DEVICE_MODE_UNDEFINED;
+    st95hf->tag_type = ST95HF_TAG_TYPE_UNDEFINED;
     uint8_t tags_to_find = *tags_type;
     *tags_type=0x00;
     int err=0;
     if ((tags_to_find & ST95HF_TRACK_NFCTYPE1) || (tags_to_find & ST95HF_TRACK_NFCTYPE2)||(tags_to_find & ST95HF_TRACK_NFCTYPE4A)){
+        iso14443a_card_t card;
         err= st95hf_field_off(dev);
         if (err!=0){
             LOG_ERR("Error turning off the field %d",err);
@@ -137,11 +144,11 @@ int st95hf_tag_hunting(const struct device* dev, uint8_t* tags_type){
         }
         k_sleep(K_MSEC(5));
 
-        err = st95hf_iso14443a_init(dev);
+        err = st95hf_iso14443a_init(dev,&card);
         if (err!=0){
             return err;
         }
-        iso14443a_card_t card;
+        
         err = st95hf_iso14443a_is_present(dev,&card);
         if (err == 0){
             LOG_INF("ISO14443A is present");
@@ -180,6 +187,7 @@ int st95hf_tag_hunting(const struct device* dev, uint8_t* tags_type){
     //Test FeliCa (iso18092)
 
     if (tags_to_find & ST95HF_TRACK_NFCTYPE3){
+        iso18092_card_t card;
         err= st95hf_field_off(dev);
         if (err!=0){
             LOG_ERR("Error turning off the field %d",err);
@@ -187,11 +195,11 @@ int st95hf_tag_hunting(const struct device* dev, uint8_t* tags_type){
         }
         k_sleep(K_MSEC(5));
 
-        err = st95hf_iso18092_init(dev);
+        err = st95hf_iso18092_init(dev,&card);
         if (err!=0){
             return err;
         }
-        iso18092_card_t card;
+        
         err = st95hf_iso18092_is_present(dev,&card);
         if (err == 0){
             LOG_INF("iso18092 is present. Type 3 found");
@@ -200,6 +208,32 @@ int st95hf_tag_hunting(const struct device* dev, uint8_t* tags_type){
     }
 
 
+    //Test iso14443b)
+
+    if (tags_to_find & ST95HF_TRACK_NFCTYPE4B){
+        iso14443b_card_t card;
+        err= st95hf_field_off(dev);
+        if (err!=0){
+            LOG_ERR("Error turning off the field %d",err);
+            return err;
+        }
+        k_sleep(K_MSEC(5));
+
+        err = st95hf_iso14443b_init(dev,&card);
+        if (err!=0){
+            return err;
+        }
+        
+        err = st95hf_iso14443b_is_present(dev,&card);
+        if (err == 0){
+            LOG_INF("iso14443b is present");
+            err = st95hf_iso14443b_anticollision(dev,&card);
+            if (err==0){
+                LOG_INF("Type 4b found");
+                *tags_type=ST95HF_TRACK_NFCTYPE4B;
+            }
+        }
+    }
 
     // Turn off the field if no tag has been detected
     err= st95hf_field_off(dev);

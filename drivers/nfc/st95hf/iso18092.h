@@ -31,7 +31,7 @@ typedef struct {
 
 
 
-int st95hf_iso18092_init(const struct device* dev);
+int st95hf_iso18092_init(const struct device* dev, iso18092_card_t* card);
 
-int st95hf_iso18092_is_present(const struct device* dev,iso18092_card_t* card);
+int st95hf_iso18092_is_present(const struct device* dev, iso18092_card_t* card);
 

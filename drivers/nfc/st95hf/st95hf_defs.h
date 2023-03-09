@@ -282,7 +282,6 @@ typedef struct {
 
 } st95hf_protocol_reader_iso14443b_t;
 
-
 /*
 ISO/IEC 18092
 NFC Forum Tag Type 3
@@ -332,6 +331,9 @@ typedef struct {
 
 
 
+
+
+
 /*
 ISO/IEC 14443 Type A 
 Topaz is not supported in Card Emulation mode.
@@ -368,6 +370,29 @@ Card Emulation for ISO/IEC 14443 Type A, Data rate is 106 Kbps for both up- and 
 
 } st95hf_protocol_emulation_iso14443a_t;
 
+typedef enum {
+	ST95HF_PROTSEL_OPT_ALL=0,
+
+	ST95HF_PROTSEL_READER_ISO15693_OPT_ALL=0,
+
+	ST95HF_PROTSEL_READER_ISO14443A_OPT_ALL=0,
+	ST95HF_PROTSEL_READER_ISO14443A_OPT_NO_ST_RESERVED=2,
+	ST95HF_PROTSEL_READER_ISO14443A_OPT_NO_DD=3,
+
+	ST95HF_PROTSEL_READER_ISO14443B_OPT_ALL=0,
+	ST95HF_PROTSEL_READER_ISO14443B_OPT_NO_ST_RESERVED=2,
+	ST95HF_PROTSEL_READER_ISO14443B_OPT_NO_ZZ=3,
+	ST95HF_PROTSEL_READER_ISO14443B_OPT_NO_YY=4,
+	ST95HF_PROTSEL_READER_ISO14443B_OPT_NO_TTTT=6,
+	ST95HF_PROTSEL_READER_ISO14443B_OPT_NO_DD=7,
+	
+	ST95HF_PROTSEL_READER_ISO18092_OPT_ALL=0,
+	ST95HF_PROTSEL_READER_ISO18092_OPT_NO_DD=1,
+
+	ST95HF_PROTSEL_EMULATION_ISO14443A_OPT_ALL=0,
+
+
+} st95hf_protocol_select_opt_t;
 
 typedef struct {
 	uint8_t protocol;			/* Protocol Code */
@@ -379,6 +404,7 @@ typedef struct {
 		st95hf_protocol_reader_iso18092_t		reader_iso18092;
 		st95hf_protocol_emulation_iso14443a_t	card_emulation_iso14443a;
 	} parameters;
+	st95hf_protocol_select_opt_t options;
 } st95hf_protocol_selection_req_t;
 
 
@@ -599,11 +625,26 @@ typedef union{
 /**
  * Read Register (RdReg) command (0x08)
 */
-
+#ifdef CONFIG_ST95HF_READ_AS_DEMO
+#define ST95HF_RREG_FLAG_NOT_INCREMENT          0x00
+#define ST95HF_RREG_FLAG_INCREMENT_AFTER_READ   0x01
+#endif
 typedef struct {
 	uint8_t reg_addr;			/* 	Byte 0:				Register Address */
-	uint8_t reg_size;			/* 	Byte 1:				Register Size. Always = 0x01 */
+
+#ifdef CONFIG_ST95HF_READ_AS_DATASHEET
+// Extracted from the Datasheet
+	uint8_t reg_size;		/* 	Byte 1:				Register Size. Always = 0x01 */
 	uint8_t st_reserved;		/* 	Byte 2:				Reserved. Always = 0x00 */
+
+#else
+// Extracted from the ST demo	
+	uint8_t reg_count;			/*	Byte 1:				Register count */
+	uint8_t flags;			    /* 	Byte 1:				Flag Increment address or not after read
+															- 0x00 to not increment
+													 		- 0x01 to increment after read */
+#endif
+
 } st95hf_read_req_t;
 
 /**
@@ -666,6 +707,7 @@ typedef struct {
 #define ST95HF_WREG_ADDR_AAC_A_ARC_B            0x68
 #define ST95HF_WREG_ADDR_TIMER_WINDOW           0x3A
 #define ST95HF_WREG_ADDR_AUTO_DETECT            0x0A
+
 #define ST95HF_WREG_FLAG_NOT_INCREMENT          0x00
 #define ST95HF_WREG_FLAG_INCREMENT_AFTER_WRITE  0x01
 

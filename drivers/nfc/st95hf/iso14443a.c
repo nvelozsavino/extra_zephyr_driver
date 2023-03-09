@@ -4,7 +4,7 @@
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(st95hf_iso14443a, CONFIG_NFC_LOG_LEVEL);
 
-static void iso14443a_complete_structure ( const iso14443a_atqa_t *atqa, iso14443a_card_t* card );
+static void iso14443a_complete_structure (iso14443a_card_t* card );
 static int st95hf_iso14443a_reqa(const struct device* dev, iso14443a_atqa_t* data);
 static int st95hf_iso14443a_emit_rats(const struct device* dev, iso14443a_rats_t* rats);
 static uint16_t fsci_to_fsc(uint8_t fsci);
@@ -12,7 +12,23 @@ static int st95hf_iso14443a_config_fdt(const struct device* dev, uint8_t pp, uin
 static int st95hf_iso14443a_ac_level(const struct device* dev, uint8_t level, iso14443a_card_t* card);
 static int st95hf_iso14443a_ac(const struct device* dev, uint8_t cascade_level, iso14443a_anticollision_t* data);
 
-int st95hf_iso14443a_init(const struct device* dev){
+
+static void init_card(iso14443a_card_t* card){
+
+    memset(&card->atqa,0x00,sizeof(card->atqa));
+    memset(&card->uid,0x00,sizeof(card->uid));
+    card->cascade_level=0;
+    card->uid_size=0;
+    card->ats_supported=false;
+    card->is_detected=false;
+}
+
+int st95hf_iso14443a_init(const struct device* dev,iso14443a_card_t* card){
+    if (card==NULL){
+        return -EINVAL;
+    }
+    
+    init_card(card);        
     st95hf_data_t *st95hf = dev->data;
     st95hf_protocol_selection_req_t protocol_selection_req = { 
         .protocol=ST95HF_PROTOCOL_CODE_READER_ISO14443A,
@@ -23,7 +39,9 @@ int st95hf_iso14443a_init(const struct device* dev){
             .PP=0,
             .MM=0,
             .st_reserved={0x02,0x02}, /* last 2 bytes since QJE version */
-        }
+        },
+        .options = ST95HF_PROTSEL_READER_ISO14443A_OPT_ALL,
+        
     } ;
 
     st95hf_rsp_t rsp={0};
@@ -69,11 +87,11 @@ int st95hf_iso14443a_init(const struct device* dev){
 }
 
 
-static void iso14443a_complete_structure ( const iso14443a_atqa_t *atqa, iso14443a_card_t* card ){
+static void iso14443a_complete_structure (iso14443a_card_t* card ){
 
 	/* according to FSP ISO 11443-3 the b7&b8 bits of ATQA tag answer is UID size bit frame */
 	/* Recovering the UID size */
-	switch ((atqa->data[0] & ISO14443A_UID_MASK)>>6)
+	switch ((card->atqa.data[0] & ISO14443A_UID_MASK)>>6)
 	{
 			case ATQ_FLAG_UID_SINGLE_SIZE:
 				card->uid_size 			= ISO14443A_UID_SINGLE_SIZE;
@@ -92,18 +110,17 @@ static void iso14443a_complete_structure ( const iso14443a_atqa_t *atqa, iso1444
 }
 
 int st95hf_iso14443a_is_present(const struct device* dev,iso14443a_card_t* card){
-    iso14443a_atqa_t atqa;
-    int err =st95hf_iso14443a_reqa(dev,&atqa); 
+    if (card==NULL){
+        return -EINVAL;
+    }
+    
+    int err =st95hf_iso14443a_reqa(dev,&card->atqa); 
     if (err!=0){
         return err;
     }
-    if (card!=NULL){
-        memcpy(&card->atqa,&atqa,sizeof(iso14443a_atqa_t));
-        iso14443a_complete_structure(&atqa,card);
-    }
-
+    card->is_detected=true;
+    iso14443a_complete_structure(card);
     return 0;
-
 }
 
 
