@@ -86,6 +86,11 @@
 
 #define PCD_TYPEA_TIMERW    0x5A
 
+/******************  PICC  ******************/
+/* ISO14443A */
+#define PICC_TYPEA_ACConfigA 0x27  /* backscaterring */
+
+
 /* Mask used for ATQA ------------------------------------------------------------------------ */
 #define ISO14443A_UID_MASK												0xC0
 #define ISO14443A_AC_BIT_FRAME_MASK								0x1F

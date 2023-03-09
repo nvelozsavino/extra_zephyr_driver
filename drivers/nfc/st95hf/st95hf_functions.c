@@ -1,6 +1,7 @@
 #include "st95hf.h"
 #include <zephyr/logging/log.h>
 #include "iso14443a.h"
+#include "iso18092.h"
 LOG_MODULE_REGISTER(st95hf_func, CONFIG_NFC_LOG_LEVEL);
 
 
@@ -175,6 +176,31 @@ int st95hf_tag_hunting(const struct device* dev, uint8_t* tags_type){
             }
         }        
     }
+
+    //Test FeliCa (iso18092)
+
+    if (tags_to_find & ST95HF_TRACK_NFCTYPE3){
+        err= st95hf_field_off(dev);
+        if (err!=0){
+            LOG_ERR("Error turning off the field %d",err);
+            return err;
+        }
+        k_sleep(K_MSEC(5));
+
+        err = st95hf_iso18092_init(dev);
+        if (err!=0){
+            return err;
+        }
+        iso18092_card_t card;
+        err = st95hf_iso18092_is_present(dev,&card);
+        if (err == 0){
+            LOG_INF("iso18092 is present. Type 3 found");
+            *tags_type=ST95HF_TRACK_NFCTYPE3;
+        }
+    }
+
+
+
     // Turn off the field if no tag has been detected
     err= st95hf_field_off(dev);
     if (err!=0){

@@ -83,6 +83,9 @@ int st95hf_send_cmd(const struct device* dev, uint8_t send_size, const void* sen
 int st95hf_idle_cmd(const struct device* dev, const st95hf_idle_req_t* req, st95hf_rsp_t* rsp, st95hf_idle_data_t* data,k_timeout_t timeout);
 int st95hf_read_reg_cmd(const struct device* dev, const st95hf_read_req_t* req, st95hf_rsp_t* rsp, uint8_t* data,k_timeout_t timeout);
 int st95hf_write_reg_cmd(const struct device* dev, const st95hf_write_req_t* req, st95hf_rsp_t* rsp,k_timeout_t timeout);
+int st95hf_select_reg_index_cmd(const struct device* dev, const st95hf_select_reg_index_req_t* req, st95hf_rsp_t* rsp,k_timeout_t timeout);
+
+
 int st95hf_subcarrier_frequency_cmd(const struct device* dev, st95hf_rsp_t* rsp, st95hf_sub_freq_data_t* data,k_timeout_t timeout);
 
 int st95hf_ac_filter_deactivate_cmd(const struct device* dev, st95hf_rsp_t * rsp, k_timeout_t timeout);

@@ -510,19 +510,39 @@ int st95hf_read_reg_cmd(const struct device* dev, const st95hf_read_req_t* req, 
 }
 
 int st95hf_write_reg_cmd(const struct device* dev, const st95hf_write_req_t* req, st95hf_rsp_t* rsp,k_timeout_t timeout){
-	st95hf_req_t request = {
-		.cmd = ST95HF_CMD_WRREG,
-		.len = sizeof(st95hf_write_req_t),
-		.data = req,
-	};
 
 	if (rsp == NULL || req == NULL){
 		return -EINVAL;
 	}
+
+	st95hf_req_t request = {
+		.cmd = ST95HF_CMD_WRREG,
+		.len =  sizeof(st95hf_write_req_t),
+		.data = req,
+	};
+
 	rsp->len=0;
 
 	return st95hf_req_rsp(dev,&request, rsp,NULL ,timeout);
 }
+
+
+int st95hf_select_reg_index_cmd(const struct device* dev, const st95hf_select_reg_index_req_t* req, st95hf_rsp_t* rsp,k_timeout_t timeout){
+
+	if (rsp == NULL || req == NULL){
+		return -EINVAL;
+	}
+	st95hf_req_t request = {
+		.cmd = ST95HF_CMD_WRREG,
+		.len = sizeof(st95hf_select_reg_index_req_t),
+		.data = req,
+	};
+
+	rsp->len=0;
+
+	return st95hf_req_rsp(dev,&request, rsp,NULL ,timeout);
+}
+
 int st95hf_subcarrier_frequency_cmd(const struct device* dev, st95hf_rsp_t* rsp, st95hf_sub_freq_data_t* data,k_timeout_t timeout){
 	st95hf_req_t request = {
 		.cmd = ST95HF_CMD_SUB_FREQ_RES,

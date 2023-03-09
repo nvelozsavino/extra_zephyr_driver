@@ -655,6 +655,9 @@ typedef struct {
 	uint8_t confirmation;			/* TimerW value confirmation = 0x04 */
 } st95hf_write_timer_w_t;
 
+
+#define ST95HF_WREG_AUTO_DETECT_ENABLE	     	0x02
+#define ST95HF_WREG_AUTO_DETECT_CONFIRMATION    0xA1
 typedef struct {
 	uint8_t enable;					/* AutoDetect filter enable = 0x02*/
 	uint8_t confirmation;			/* AutoDetect filter confirmation = 0xA1 */
@@ -679,6 +682,17 @@ typedef struct {
 		st95hf_write_auto_detect_t auto_detect;
 	} params;
 } st95hf_write_req_t;
+
+typedef struct {
+	uint8_t reg_addr;			/* 	Byte 0:	Register Address 	0x68: for AAC_A or ARC_B
+																0x3A: Timer Window (TimerW) (ISO/IEC 14443 Type A)
+																0x0A: AutoDetect filter control value (ISO/IEC 18092)*/
+	uint8_t flags;			    /* 	Byte 1:				Flag Increment address or not after Write
+															- 0x00 to not increment
+													 		*/
+	uint8_t index;														
+} st95hf_select_reg_index_req_t;
+
 
 /**
  * Subcarrier frequency response (0x0B)
@@ -765,7 +779,4 @@ typedef enum {
 	ST95HF_PROTOCOL_CARD_EMULATION_ISO15693,
 	ST95HF_PROTOCOL_CARD_EMULATION_ISO18092,
 } st95hf_protocol_t;	
-
-
-
 
