@@ -14,10 +14,10 @@
 #define START_TRIG_INT2			1
 #define TRIGGED_DATA_READY		4
 #define TRIGGED_DATA_EXPECTED	5
-
-
-LOG_MODULE_DECLARE(st95hf, CONFIG_NFC_LOG_LEVEL);
 #include "st95hf.h"
+
+LOG_MODULE_DECLARE(st95hf, LOG_LEVEL_DBG);
+
 
 
 static void st95hf_gpio_irq_out_callback(const struct device *dev,

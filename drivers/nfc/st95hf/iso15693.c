@@ -2,8 +2,7 @@
 #include "st95hf.h"
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(st95hf_iso15693, CONFIG_NFC_LOG_LEVEL);
-
+LOG_MODULE_DECLARE(st95hf, LOG_LEVEL_DBG);
 
 static void init_card(iso15693_card_t* card){
     // memset(&card->atqb , 0x00, sizeof(card->atqb));

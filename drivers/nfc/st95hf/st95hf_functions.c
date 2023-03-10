@@ -3,7 +3,7 @@
 #include "iso14443a.h"
 #include "iso14443b.h"
 #include "iso18092.h"
-LOG_MODULE_REGISTER(st95hf_func, CONFIG_NFC_LOG_LEVEL);
+LOG_MODULE_DECLARE(st95hf, LOG_LEVEL_DBG);
 
 
 int st95hf_tag_calibration(const struct device* dev, uint8_t wu_period, uint8_t* dac_data_ref){
@@ -136,6 +136,7 @@ int st95hf_tag_hunting(const struct device* dev, uint8_t* tags_type){
     *tags_type=0x00;
     int err=0;
     if ((tags_to_find & ST95HF_TRACK_NFCTYPE1) || (tags_to_find & ST95HF_TRACK_NFCTYPE2)||(tags_to_find & ST95HF_TRACK_NFCTYPE4A)){
+        LOG_INF("Checking for Types 1,2 and 4A");
         iso14443a_card_t card;
         err= st95hf_field_off(dev);
         if (err!=0){
@@ -146,6 +147,7 @@ int st95hf_tag_hunting(const struct device* dev, uint8_t* tags_type){
 
         err = st95hf_iso14443a_init(dev,&card);
         if (err!=0){
+            LOG_ERR("Error initializing iso14443a %d",err);
             return err;
         }
         

@@ -12,9 +12,10 @@
 #include <zephyr/sys/__assert.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/pm/device.h>
-
-LOG_MODULE_REGISTER(st95hf, CONFIG_NFC_LOG_LEVEL);
+#include <stdio.h>
 #include "st95hf.h"
+LOG_MODULE_REGISTER(st95hf, LOG_LEVEL_DBG);
+
 
 
 int st95hf_stop_waiting(const struct device* dev, bool force, bool pulse_irq){
@@ -348,43 +349,44 @@ int st95hf_idn_cmd(const struct device* dev, st95hf_rsp_t *rsp, st95hf_idn_data_
 
 int st95hf_protocol_select_cmd(const struct device* dev, const st95hf_protocol_selection_req_t * req, st95hf_rsp_t *rsp,k_timeout_t timeout){
 	st95hf_data_t *st95hf = dev->data;
-	st95hf_req_t request = {
-		.cmd = ST95HF_CMD_PROTOCOL_SELECTION,
-		.len = 0,
-		.data = NULL
-	};
 	if (req == NULL || rsp==NULL){
 		return -EINVAL;
 	}
+	st95hf_req_t request = {
+		.cmd = ST95HF_CMD_PROTOCOL_SELECTION,
+		.len = 1,
+		.data = req
+	};
+
 
 	switch (req->protocol){
 		case ST95HF_PROTOCOL_CODE_READER_FIELD_OFF:
-			request.len=sizeof(st95hf_protocol_reader_field_off_t);
-			request.data=&req->parameters.field_off;
+			request.len+=sizeof(st95hf_protocol_reader_field_off_t);
+			// request.data=&req->parameters.field_off;
 			break;
 		case ST95HF_PROTOCOL_CODE_READER_ISO15693:
-			request.len=sizeof(st95hf_protocol_reader_iso15693_t);
-			request.data=&req->parameters.reader_iso15693;
+			request.len+=sizeof(st95hf_protocol_reader_iso15693_t);
+			// request.data=&req->parameters.reader_iso15693;
 			break;
 		case ST95HF_PROTOCOL_CODE_READER_ISO14443A:
 			
-			request.len=sizeof(st95hf_protocol_reader_iso14443a_t);
+			request.len+=sizeof(st95hf_protocol_reader_iso14443a_t);
 			if (st95hf->ic_version<ST95HF_IC_VERSION_QJE){
 				request.len-=2;
 			}
-			request.data=&req->parameters.reader_iso14443a;
+			// request.data=&req->parameters.reader_iso14443a;
 			break;
 		case ST95HF_PROTOCOL_CODE_READER_ISO14443B:
-			request.len=sizeof(st95hf_protocol_reader_iso14443b_t);
-			request.data=&req->parameters.reader_iso14443b;
+			request.len+=sizeof(st95hf_protocol_reader_iso14443b_t);
+			// request.data=&req->parameters.reader_iso14443b;
 			break;
 		case ST95HF_PROTOCOL_CODE_READER_ISO18092:
-			request.len=sizeof(st95hf_protocol_reader_iso18092_t);
-			request.data=&req->parameters.reader_iso18092;
+			request.len+=sizeof(st95hf_protocol_reader_iso18092_t);
+			// request.data=&req->parameters.reader_iso18092;
 			break;
 		case ST95HF_PROTOCOL_CODE_CARD_EMULATION_ISO14443A:
-			request.len=sizeof(st95hf_protocol_emulation_iso14443a_t);
-			request.data=&req->parameters.card_emulation_iso14443a;
+			request.len+=sizeof(st95hf_protocol_emulation_iso14443a_t);
+			// request.data=&req->parameters.card_emulation_iso14443a;
 			break;
 		case ST95HF_PROTOCOL_CODE_CARD_EMULATION_ISO14443B:
 			return -EINVAL;
@@ -508,7 +510,7 @@ int st95hf_read_reg_cmd(const struct device* dev, const st95hf_read_req_t* req, 
 	if (rsp == NULL || data == NULL){
 		return -EINVAL;
 	}
-	rsp->len=1;
+	// rsp->len=1;
 
 	return st95hf_req_rsp(dev,&request, rsp,data ,timeout);
 }
@@ -647,15 +649,31 @@ int st95hf_echo_cmd(const struct device* dev,k_timeout_t timeout){
 	return 0;
 }
 
-int st95hf_req_rsp(const struct device* dev, const st95hf_req_t* req, st95hf_rsp_t* rsp, void* data ,k_timeout_t timeout){
+// static char dbg_buffer[128];
+// static const char* dbg_req(uint8_t code, uint8_t len, const void * data){
+	
+// 	int pos = 0;
+// 	pos = snprintf(dbg_buffer,sizeof(dbg_buffer),"%02x%02x",code,len);
+// 	if (data!=NULL){
+// 		for (uint8_t i=0;i<len;i++){
+// 			pos = snprintf(&dbg_buffer[pos],sizeof(dbg_buffer)-pos,"%02x",((uint8_t*)data)[i]);
+// 		}
+// 	}
+// 	return dbg_buffer;
+// }
+
+
+int st95hf_req_rsp(const struct device* dev, const st95hf_req_t* req, st95hf_rsp_t* rsp, void* rsp_data ,k_timeout_t timeout){
 	// st95hf_data_t *st95hf = dev->data;
 	// const st95hf_config_t *cfg = dev->config;
 	if (req ==NULL || rsp==NULL){
 		return -EINVAL;
 	}
-	if (rsp->len!=0 && data==NULL){
+	if (rsp->len!=0 && rsp_data==NULL){
 		return -EINVAL;
 	}
+	LOG_DBG(">>> %02x %02x",req->cmd,req->len);
+	LOG_HEXDUMP_DBG(req->data,req->len,">>> data");
 	int err = st95hf_send(dev,req->cmd,req->len,req->data);
 	if (err!=0){
 		LOG_ERR("Error sending. %d",err);
@@ -668,7 +686,10 @@ int st95hf_req_rsp(const struct device* dev, const st95hf_req_t* req, st95hf_rsp
 
 		return err;
 	}
-	err = st95hf_receive(dev,&rsp->result_code,data,&rsp->len);
+	err = st95hf_receive(dev,&rsp->result_code,rsp_data,&rsp->len);
+	// LOG_DBG("<<< %s",dbg_req(rsp->result_code,rsp->len,rsp_data));
+	LOG_DBG("<<< %02x %02x",rsp->result_code,rsp->len);
+	LOG_HEXDUMP_DBG(rsp_data,rsp->len,">>> data");
 	if (err!=0){
 		LOG_ERR("Error receiving. %d",err);
 	}

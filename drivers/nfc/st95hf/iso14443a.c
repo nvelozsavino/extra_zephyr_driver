@@ -2,7 +2,7 @@
 #include "st95hf.h"
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(st95hf_iso14443a, CONFIG_NFC_LOG_LEVEL);
+LOG_MODULE_DECLARE(st95hf, LOG_LEVEL_DBG);
 
 static void iso14443a_complete_structure (iso14443a_card_t* card );
 static int st95hf_iso14443a_reqa(const struct device* dev, iso14443a_atqa_t* data);
@@ -116,6 +116,7 @@ int st95hf_iso14443a_is_present(const struct device* dev,iso14443a_card_t* card)
     
     int err =st95hf_iso14443a_reqa(dev,&card->atqa); 
     if (err!=0){
+        LOG_ERR("Error REQA %d",err);
         return err;
     }
     card->is_detected=true;
@@ -134,26 +135,34 @@ int st95hf_iso14443a_check_type1(const struct device* dev){
     
     int err = st95hf_send_receive_cmd(dev,sizeof(data),data,&rsp,buffer,K_SECONDS(3));
     if (err!=0){
+        LOG_ERR("Error send/recv %d",err);
         return err;
     }
+
+    if (rsp.result_code==ST95HF_STATUS_CODE_FRAME_RECV_OK){
+        LOG_ERR("Error rsp code %02x", rsp.result_code);
+        return -ENOMSG;
+    }
+
     if (rsp.len<sizeof(st95hf_sendrecv_iso14443a_footer_rsp_t)){
+        LOG_ERR("Error rsp len less than footer");
         return -ENODATA;
     }
     st95hf_sendrecv_iso14443a_footer_rsp_t* footer = (st95hf_sendrecv_iso14443a_footer_rsp_t*)&buffer[rsp.len-sizeof(st95hf_sendrecv_iso14443a_footer_rsp_t)];
     if (footer->fields.crc_error){
+        LOG_ERR("CRC Error");
         return -EBADF;
     }
 
-    if (rsp.result_code==ST95HF_STATUS_CODE_FRAME_RECV_OK){
-        if(rsp.len==4){
-            return -ENOMSG;
-        } else {
-            st95hf->device_mode = ST95HF_DEVICE_MODE_PCD;
-            st95hf->tag_type=ST95HF_TAG_TYPE_TT1;
-            return 0;
-        }
+    if(rsp.len==4){
+        LOG_ERR("Len %d!=4", rsp.len);
+        return -ENOMSG;
+    } else {
+        st95hf->device_mode = ST95HF_DEVICE_MODE_PCD;
+        st95hf->tag_type=ST95HF_TAG_TYPE_TT1;
+        return 0;
     }
-    return -ENOMSG;
+        
 
 }
 
@@ -162,7 +171,7 @@ int st95hf_iso14443a_check_type1(const struct device* dev){
 
 
 static int st95hf_iso14443a_reqa(const struct device* dev, iso14443a_atqa_t* data){
-    if (data!=NULL){
+    if (data==NULL){
         return -EINVAL;
     }
     uint8_t req[2];
@@ -171,22 +180,26 @@ static int st95hf_iso14443a_reqa(const struct device* dev, iso14443a_atqa_t* dat
     st95hf_sendrecv_iso14443a_footer_req_t *footer = (st95hf_sendrecv_iso14443a_footer_req_t *)&req[1];
     footer->byte=0x07; // = footer->fields.significant_bits=7;
     st95hf_rsp_t rsp={0};
-    rsp.len = sizeof(iso14443a_atqa_t);
-    int err = st95hf_send_receive_cmd(dev,sizeof(req),req,&rsp,data,K_SECONDS(3));
+    uint8_t rsp_data[sizeof(iso14443a_atqa_t)+sizeof(st95hf_sendrecv_iso14443a_footer_rsp_t)];
+    rsp.len = sizeof(rsp_data);
+    int err = st95hf_send_receive_cmd(dev,sizeof(req),req,&rsp,rsp_data,K_SECONDS(3));
     if (err!=0){
+        LOG_ERR("Error REQA %d",err);
         return err;
     }
     if (rsp.result_code!=ST95HF_STATUS_CODE_FRAME_RECV_OK){
         LOG_ERR("Error %02x writing reg ARC B",rsp.result_code);
         return -EIO;
     }
-
+    memcpy(data,rsp_data,sizeof(iso14443a_atqa_t));
     return 0;
 }
 
 static int st95hf_iso14443a_ac(const struct device* dev, uint8_t cascade_level, iso14443a_anticollision_t* data){
 
     uint8_t anticol_parameter [7] = {cascade_level, ISO14443A_NVM_20, 0x08,0x00,0x00,0x00,0x00};
+    st95hf_sendrecv_iso14443a_footer_req_t* footer_req = (st95hf_sendrecv_iso14443a_footer_req_t*)&anticol_parameter[2];
+    footer_req->fields.significant_bits=8;
     uint8_t uid[4] = {0x00,0x00,0x00,0x00};
     uint8_t rsp_data[sizeof(iso14443a_anticollision_t)+sizeof(st95hf_sendrecv_iso14443a_footer_rsp_t)]; // 4 UID + 1 BCC + 3 footer
     int err;
@@ -201,17 +214,20 @@ static int st95hf_iso14443a_ac(const struct device* dev, uint8_t cascade_level, 
         LOG_ERR("Error send/recv anticollision %d",err);
         return err;
     }
+
     if (rsp.len<sizeof(st95hf_sendrecv_iso14443a_footer_rsp_t)){
+        LOG_ERR("Error rsp len %d <footer %d",rsp.len,sizeof(st95hf_sendrecv_iso14443a_footer_rsp_t));
         return -ENODATA;
     }
-    st95hf_sendrecv_iso14443a_footer_rsp_t* footer = (st95hf_sendrecv_iso14443a_footer_rsp_t*)&rsp_data[rsp.len-sizeof(st95hf_sendrecv_iso14443a_footer_rsp_t)];
+    st95hf_sendrecv_iso14443a_footer_rsp_t* footer_rsp = (st95hf_sendrecv_iso14443a_footer_rsp_t*)&rsp_data[rsp.len-sizeof(st95hf_sendrecv_iso14443a_footer_rsp_t)];
 
-    bool collision = footer->fields.collision_detect!=0;
+    bool collision = footer_rsp->fields.collision_detect!=0;
 
-    byte_collision_index = footer->fields.byte_collision_index;
-    bit_collision_index = footer->fields.bit_collision_index;
+    byte_collision_index = footer_rsp->fields.byte_collision_index;
+    bit_collision_index = footer_rsp->fields.bit_collision_index;
 	/* case that should not happend, as occurs because we have miss another collision */
 	if( byte_collision_index == 8){
+        LOG_ERR("Error byte_collision_index=8");
 		return -EBADE;
 	}
 
@@ -269,17 +285,17 @@ static int st95hf_iso14443a_ac(const struct device* dev, uint8_t cascade_level, 
             LOG_ERR("Error result_code unexpected %02x", rsp.result_code);
             return -ENOMSG;
         }
-        footer = (st95hf_sendrecv_iso14443a_footer_rsp_t*)&rsp_data[rsp.len-sizeof(st95hf_sendrecv_iso14443a_footer_rsp_t)];
+        footer_rsp = (st95hf_sendrecv_iso14443a_footer_rsp_t*)&rsp_data[rsp.len-sizeof(st95hf_sendrecv_iso14443a_footer_rsp_t)];
 
         /* check if there is another collision to take into account*/
-        collision = footer->fields.collision_detect!=0;
+        collision = footer_rsp->fields.collision_detect!=0;
         if (collision){
-            new_byte_collision_index = footer->fields.byte_collision_index;
-            new_bit_collision_index = footer->fields.bit_collision_index;            
+            new_byte_collision_index = footer_rsp->fields.byte_collision_index;
+            new_bit_collision_index = footer_rsp->fields.bit_collision_index;            
         }
 
         /* we can check that non-alignement is the one expected */
-        uint8_t remaining_bit = 8 - footer->fields.significant_bits;
+        uint8_t remaining_bit = 8 - footer_rsp->fields.significant_bits;
 
         if (remaining_bit == bit_collision_index+1){
             /* recreate the good UID */
@@ -377,7 +393,8 @@ static int st95hf_iso14443a_ac_level(const struct device* dev, uint8_t level, is
     uint8_t send_data[10];
     err = st95hf_iso14443a_ac(dev,cascade_level,&ac_data);
     if (err!=0){
-        return -ENODEV;
+        LOG_ERR("Error AC cascade_level %02x. Err: %d",cascade_level, err);
+        return err;
     }
     if (!only_part && card->uid_size== uid_size){
         memcpy(&card->uid[uid_start],ac_data.uid,ISO14443A_UID_SINGLE_SIZE);
@@ -408,6 +425,7 @@ static int st95hf_iso14443a_ac_level(const struct device* dev, uint8_t level, is
     rsp.len= sizeof(rcv_data);
     err = st95hf_send_receive_cmd(dev,len,send_data,&rsp,rcv_data,K_SECONDS(3));
     if (err!=0){
+        LOG_ERR("Error send/rcv %d",err);
         return err;
     }
     if (rsp.result_code!=ST95HF_STATUS_CODE_FRAME_RECV_OK){
