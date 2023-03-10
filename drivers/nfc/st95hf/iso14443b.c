@@ -5,16 +5,16 @@
 LOG_MODULE_REGISTER(st95hf_iso14443b, CONFIG_NFC_LOG_LEVEL);
 
 static void init_card(iso14443b_card_t* card){
-    if (card==NULL){
-        return;
-    }
+    
     memset(&card->atqb , 0x00, sizeof(card->atqb));
 	card->is_detected  = false;
 	memset(card->log_msg, 0x00, sizeof(card->log_msg));
 }
 
 int st95hf_iso14443b_init(const struct device* dev, iso14443b_card_t* card){
-
+    if (card==NULL){
+        return -EINVAL;
+    }
     init_card(card);
     st95hf_data_t *st95hf = dev->data;
     st95hf_protocol_selection_req_t protocol_selection_req = { 

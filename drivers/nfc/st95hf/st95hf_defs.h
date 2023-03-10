@@ -185,11 +185,11 @@ typedef struct {
 	uint8_t subcarrier:1; 		/*	Byte 0 [1]:		0: Single subcarrier (S)
 													1: Dual subcarrier (D) 	*/
 
-	uint8_t modulation:1; 		/*	Byte 0 [2]:		0: Respect 312-µs delay
-													1: Wait for SOF 		*/
-
-	uint8_t delay:1; 			/*	Byte 0 [3]:		0: 100% modulation (100)
+	uint8_t modulation:1; 		/*	Byte 0 [2]:		0: 100% modulation (100)
 													1: 10% modulation (10)	*/
+
+	uint8_t delay:1; 			/*	Byte 0 [3]:		0: Respect 312-µs delay
+													1: Wait for SOF 		*/
 
 	uint8_t bitrate:2; 			/*	Byte 0 [5..4]:	00: 26 Kbps (H)
 													01: 52 Kbps
