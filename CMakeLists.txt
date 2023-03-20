@@ -9,3 +9,4 @@ add_subdirectory(drivers)
 add_subdirectory(utils)
 
 zephyr_include_directories(include)
+zephyr_include_directories(.)

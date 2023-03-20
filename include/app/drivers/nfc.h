@@ -114,9 +114,10 @@ __subsystem struct nfc_driver_api {
  *
  * @return 0 if successful, negative errno code if failure.
  */
-__syscall int nfc_field_off(const struct device *dev);
+// __syscall int nfc_field_off(const struct device *dev);
 
-static inline int z_impl_nfc_field_off(const struct device *dev)
+// static inline int z_impl_nfc_field_off(const struct device *dev)
+static inline int nfc_field_off(const struct device *dev)
 {
 	const struct nfc_driver_api *api =
 		(const struct nfc_driver_api *)dev->api;
@@ -136,10 +137,12 @@ static inline int z_impl_nfc_field_off(const struct device *dev)
  *
  * @return 0 if successful, negative errno code if failure.
  */
-__syscall int nfc_protocol_init(const struct device *dev,
-				    enum nfc_protocol protocol);
+// __syscall int nfc_protocol_init(const struct device *dev,
+// 				    enum nfc_protocol protocol);
 
-static inline int z_impl_nfc_protocol_init(const struct device *dev,
+// static inline int z_impl_nfc_protocol_init(const struct device *dev,
+// 					 enum nfc_protocol protocol)
+static inline int nfc_protocol_init(const struct device *dev,
 					 enum nfc_protocol protocol)
 {
 	const struct nfc_driver_api *api =
@@ -160,10 +163,12 @@ static inline int z_impl_nfc_protocol_init(const struct device *dev,
  *
  * @return 0 if successful, negative errno code if failure.
  */
-__syscall int nfc_protocol_is_present(const struct device *dev,
-				    enum nfc_protocol protocol);
+// __syscall int nfc_protocol_is_present(const struct device *dev,
+// 				    enum nfc_protocol protocol);
 
-static inline int z_impl_nfc_protocol_is_present(const struct device *dev,
+// static inline int z_impl_nfc_protocol_is_present(const struct device *dev,
+// 				    enum nfc_protocol protocol)
+static inline int nfc_protocol_is_present(const struct device *dev,
 				    enum nfc_protocol protocol)
 {
 	const struct nfc_driver_api *api =
@@ -183,10 +188,12 @@ static inline int z_impl_nfc_protocol_is_present(const struct device *dev,
  *
  * @return 0 if successful, negative errno code if failure.
  */
-__syscall int nfc_ndef_read(const struct device *dev,
-				    enum nfc_protocol protocol, uint8_t* ndef_buffer, uint16_t* buffer_size);
+// __syscall int nfc_ndef_read(const struct device *dev,
+// 				    enum nfc_protocol protocol, uint8_t* ndef_buffer, uint16_t* buffer_size);
 
-static inline int z_impl_nfc_ndef_read(const struct device *dev,
+// static inline int z_impl_nfc_ndef_read(const struct device *dev,
+// 				    enum nfc_protocol protocol, uint8_t* ndef_buffer, uint16_t* buffer_size)
+static inline int nfc_ndef_read(const struct device *dev,
 				    enum nfc_protocol protocol, uint8_t* ndef_buffer, uint16_t* buffer_size)
 {
 	const struct nfc_driver_api *api =
@@ -208,9 +215,10 @@ static inline int z_impl_nfc_ndef_read(const struct device *dev,
  *
  * @return 0 if successful, negative errno code if failure.
  */
-__syscall int nfc_send_receive(const struct device *dev, const uint8_t* send_data, size_t send_size, uint8_t* rcv_data, size_t* rcv_size);
+// __syscall int nfc_send_receive(const struct device *dev, const uint8_t* send_data, size_t send_size, uint8_t* rcv_data, size_t* rcv_size);
 
-static inline int z_impl_nfc_send_receive(const struct device *dev, const uint8_t* send_data, size_t send_size, uint8_t* rcv_data, size_t* rcv_size)
+// static inline int z_impl_nfc_send_receive(const struct device *dev, const uint8_t* send_data, size_t send_size, uint8_t* rcv_data, size_t* rcv_size)
+static inline int nfc_send_receive(const struct device *dev, const uint8_t* send_data, size_t send_size, uint8_t* rcv_data, size_t* rcv_size)
 {
 	const struct nfc_driver_api *api =
 		(const struct nfc_driver_api *)dev->api;
@@ -314,6 +322,6 @@ struct nfc_info {
 }
 #endif
 
-#include <syscalls/nfc.h>
+// #include <syscalls/nfc.h>
 
 #endif /* ZEPHYR_INCLUDE_DRIVERS_SENSOR_H_ */

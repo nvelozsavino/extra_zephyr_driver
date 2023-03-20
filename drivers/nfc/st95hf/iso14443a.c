@@ -1,5 +1,6 @@
 #include "iso14443a.h"
 #include "st95hf.h"
+#include <errno.h>
 
 #include <zephyr/logging/log.h>
 LOG_MODULE_DECLARE(st95hf, LOG_LEVEL_DBG);
@@ -139,7 +140,7 @@ int st95hf_iso14443a_check_type1(const struct device* dev){
         return err;
     }
 
-    if (rsp.result_code==ST95HF_STATUS_CODE_FRAME_RECV_OK){
+    if (rsp.result_code!=ST95HF_STATUS_CODE_FRAME_RECV_OK){
         LOG_ERR("Error rsp code %02x", rsp.result_code);
         return -ENOMSG;
     }
@@ -191,6 +192,7 @@ static int st95hf_iso14443a_reqa(const struct device* dev, iso14443a_atqa_t* dat
         LOG_ERR("Error %02x writing reg ARC B",rsp.result_code);
         return -EIO;
     }
+    LOG_HEXDUMP_DBG(rsp_data,rsp.len,"REQA:");
     memcpy(data,rsp_data,sizeof(iso14443a_atqa_t));
     return 0;
 }
@@ -222,7 +224,7 @@ static int st95hf_iso14443a_ac(const struct device* dev, uint8_t cascade_level, 
     st95hf_sendrecv_iso14443a_footer_rsp_t* footer_rsp = (st95hf_sendrecv_iso14443a_footer_rsp_t*)&rsp_data[rsp.len-sizeof(st95hf_sendrecv_iso14443a_footer_rsp_t)];
 
     bool collision = footer_rsp->fields.collision_detect!=0;
-
+    LOG_INF("Collision: %d",collision);
     byte_collision_index = footer_rsp->fields.byte_collision_index;
     bit_collision_index = footer_rsp->fields.bit_collision_index;
 	/* case that should not happend, as occurs because we have miss another collision */
@@ -402,9 +404,11 @@ static int st95hf_iso14443a_ac_level(const struct device* dev, uint8_t level, is
         memcpy(&card->uid[uid_start],&ac_data.uid[part_start],part_size);
     }
     uint8_t bcc = ac_data.bcc;
+    LOG_DBG("BCC = %02x", bcc);
     uint8_t len =0;
     send_data[len++]=cascade_level;
     send_data[len++]=ISO14443A_NVM_70;
+    LOG_INF("UID Size: %d== Expected %d, only_part %d", card->uid_size, uid_size, only_part);
     if (card->uid_size== uid_size){
         memcpy(&send_data[len],&card->uid[uid_start],ISO14443A_UID_SINGLE_SIZE);
         len+=ISO14443A_UID_SINGLE_SIZE;
@@ -433,6 +437,7 @@ static int st95hf_iso14443a_ac_level(const struct device* dev, uint8_t level, is
         return -ENOMSG;
     }
     card->sak= rcv_data[0];
+    LOG_INF("SAK: %02x",card->sak);
     return 0;
 }
 
@@ -511,7 +516,7 @@ static int st95hf_iso14443a_emit_rats(const struct device* dev, iso14443a_rats_t
     // st95hf_sendrecv_iso14443a_footer_req_t* footer = (st95hf_sendrecv_iso14443a_footer_req_t*)&send_data[2];
     // footer->fields.append_crc=1;
     // footer->fields.significant_bits=8;
-    uint8_t rsp_data[10]={0};
+    uint8_t rsp_data[255]={0};
     st95hf_rsp_t rsp={
         .len = sizeof(rsp_data),
     };
@@ -556,22 +561,27 @@ int st95hf_iso14443a_anticollision(const struct device* dev, iso14443a_card_t* c
     uint8_t level=0;
     bool not_complete=true;
     do {
+        LOG_INF("Trying AC Level %d",level+1);
         err = st95hf_iso14443a_ac_level(dev,++level,card);   
        	/* UID Complete ? */     
         not_complete = (card->sak & SAK_FLAG_UID_NOT_COMPLETE) == SAK_FLAG_UID_NOT_COMPLETE;
-    } while (err!=0 && level<3 && not_complete);
+        LOG_DBG("AC Level %d, Err: %d, SAK: %02x",level, err, card->sak);
+    } while (err==0 && level<3 && not_complete);
 
     if (err!=0){
         LOG_ERR("Error executing anticollision level %d. %d",level,err);
         return err;
     }
+    LOG_INF("Anticollision done Level %d, not_complete %d",level,not_complete);
 
-    iso14443a_rats_t rats = {
-        .fsc=32,
-        .fwi=4,
-    };
+
+    card->rats.fsc =32;
+    card->rats.fwi=4;
 	/* Checks if the RATS command is supported by the card */
     if (card->sak & SAK_FLAG_ATS_SUPPORTED){
+    LOG_INF("ATS Supported");
+
+
     /*  Change the PP:MM parameter to respect RATS timing TS-DP-1.1 13.8.1.1
 	*   min to respect 
 	*   FDT PCD = FWTt4at,activation = 71680 (1/fc) 
@@ -581,6 +591,7 @@ int st95hf_iso14443a_anticollision(const struct device* dev, iso14443a_card_t* c
 	*   FDT PCD = FWTt4at,activation + dela(t4at,poll) = 5286us + 16.4ms ~= 21.7ms 
 	*   (2^PP)*(MM+1)*(DD+128)*32 = 21,7 ==> PP = 4 MM=0 DD=12
     */
+        LOG_INF("Configuring FDT");
         err = st95hf_iso14443a_config_fdt(dev,4,0,12);
         if (err!=0){
             LOG_ERR("Error configuring FDT for RATS. %d",err);
@@ -588,15 +599,16 @@ int st95hf_iso14443a_anticollision(const struct device* dev, iso14443a_card_t* c
         }
 
         card->ats_supported=true;
-        
-        err = st95hf_iso14443a_emit_rats(dev,&rats);
+        LOG_INF("Emmiting RATS");
+        err = st95hf_iso14443a_emit_rats(dev,&card->rats);
         if (err!=0){
             LOG_ERR("Error emiting RATS. %d",err);
             return err;
         }
+        LOG_INF("RATS done, fwi: %d",card->rats.fwi);
     }
-    if (rats.fwi<4){
-        rats.fwi=4;
+    if (card->rats.fwi<4){
+        card->rats.fwi=4;
     }
     uint8_t wtxm =1;
     	
@@ -625,8 +637,9 @@ int st95hf_iso14443a_anticollision(const struct device* dev, iso14443a_card_t* c
 			
 			2) In the case of extension time request, M will take the WTXM value.			
     */
-				
-    err = st95hf_iso14443a_config_fdt(dev,rats.fwi,wtxm,0);
+    LOG_INF("Reconfiguring FDT");
+
+    err = st95hf_iso14443a_config_fdt(dev,card->rats.fwi,wtxm,0);
     if (err!=0){
         LOG_ERR("Error configuring FDT for RATS. %d",err);
         return err;
@@ -642,5 +655,11 @@ int st95hf_iso14443a_anticollision(const struct device* dev, iso14443a_card_t* c
         return 0;
     }
 
+    return 0;
+}
+
+
+int st95hf_iso14443a_read_ndef(const struct device* dev, iso14443a_card_t* card, uint8_t* buffer, size_t buffer_size){
+    
     return 0;
 }

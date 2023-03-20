@@ -135,8 +135,8 @@ int st95hf_tag_hunting(const struct device* dev, uint8_t* tags_type){
     uint8_t tags_to_find = *tags_type;
     *tags_type=0x00;
     int err=0;
-    if ((tags_to_find & ST95HF_TRACK_NFCTYPE1) || (tags_to_find & ST95HF_TRACK_NFCTYPE2)||(tags_to_find & ST95HF_TRACK_NFCTYPE4A)){
-        LOG_INF("Checking for Types 1,2 and 4A");
+    if (tags_to_find & ST95HF_TRACK_NFCTYPE1){
+        LOG_INF("Checking for Types 1");
         iso14443a_card_t card;
         err= st95hf_field_off(dev);
         if (err!=0){
@@ -154,41 +154,63 @@ int st95hf_tag_hunting(const struct device* dev, uint8_t* tags_type){
         err = st95hf_iso14443a_is_present(dev,&card);
         if (err == 0){
             LOG_INF("ISO14443A is present");
-            if (tags_to_find & ST95HF_TRACK_NFCTYPE1){
-                LOG_INF("Checking for ISO14443A Type 1");
-                err = st95hf_iso14443a_check_type1(dev);
-                if (err==0){
-                    LOG_INF("ISO14443A Type 1 found");
-                    *tags_type=ST95HF_TRACK_NFCTYPE1;
-                    return 0;
-                } else {
-                    LOG_INF("ISO14443A Type 1 not found");
-                }
+            
+            LOG_INF("Checking for ISO14443A Type 1");
+            err = st95hf_iso14443a_check_type1(dev);
+            if (err==0){
+                LOG_INF("ISO14443A Type 1 found");
+                *tags_type=ST95HF_TRACK_NFCTYPE1;
+                return 0;
+            } else {
+                LOG_INF("ISO14443A Type 1 not found. Err %d",err);
             }
-            if ((tags_to_find & ST95HF_TRACK_NFCTYPE2)||(tags_to_find & ST95HF_TRACK_NFCTYPE4A)){
-                LOG_INF("Checking for ISO14443A Type 2 or Type 4");
-                err = st95hf_iso14443a_anticollision(dev,&card);
-                if (err==0){
-                    LOG_INF("ISO14443A anticollision found");
-                    if ((card.sak& 0x60)==0x00){
-                        LOG_INF("ISO14443A Type 2 found");
-                        *tags_type=ST95HF_TRACK_NFCTYPE2;
-                        return 0;
-                    } else if ((card.sak& 0x20)!=0x00){
-                        LOG_INF("ISO14443A Type 4A found");
-                        *tags_type=ST95HF_TRACK_NFCTYPE4A;
-                        return 0;
-                    }
-                } else {
-                    LOG_INF("ISO14443A anticollision not found");
-                }
-            }
+        
         }        
     }
 
+
+  if ((tags_to_find & ST95HF_TRACK_NFCTYPE2)||(tags_to_find & ST95HF_TRACK_NFCTYPE4A)){
+        LOG_INF("Checking for Types 2 and 4A");
+        iso14443a_card_t card;
+        err= st95hf_field_off(dev);
+        if (err!=0){
+            LOG_ERR("Error turning off the field %d",err);
+            return err;
+        }
+        k_sleep(K_MSEC(5));
+
+        err = st95hf_iso14443a_init(dev,&card);
+        if (err!=0){
+            LOG_ERR("Error initializing iso14443a %d",err);
+            return err;
+        }
+        
+        err = st95hf_iso14443a_is_present(dev,&card);
+        if (err == 0){
+            LOG_INF("ISO14443A is present");         
+            LOG_INF("Checking for ISO14443A Type 2 or Type 4");
+            err = st95hf_iso14443a_anticollision(dev,&card);
+            if (err==0){
+                LOG_INF("ISO14443A anticollision found");
+                if ((card.sak& 0x60)==0x00){
+                    LOG_INF("ISO14443A Type 2 found");
+                    *tags_type=ST95HF_TRACK_NFCTYPE2;
+                    return 0;
+                } else if ((card.sak& 0x20)!=0x00){
+                    LOG_INF("ISO14443A Type 4A found");
+                    *tags_type=ST95HF_TRACK_NFCTYPE4A;
+                    return 0;
+                }
+            } else {
+                LOG_INF("ISO14443A anticollision not found. Err %d",err);
+            }
+
+        }        
+    }
     //Test FeliCa (iso18092)
 
     if (tags_to_find & ST95HF_TRACK_NFCTYPE3){
+        LOG_INF("Test FeliCa (iso18092)");
         iso18092_card_t card;
         err= st95hf_field_off(dev);
         if (err!=0){
@@ -199,6 +221,7 @@ int st95hf_tag_hunting(const struct device* dev, uint8_t* tags_type){
 
         err = st95hf_iso18092_init(dev,&card);
         if (err!=0){
+            LOG_ERR("Error initiating iso18092 %d",err);
             return err;
         }
         
@@ -206,13 +229,17 @@ int st95hf_tag_hunting(const struct device* dev, uint8_t* tags_type){
         if (err == 0){
             LOG_INF("iso18092 is present. Type 3 found");
             *tags_type=ST95HF_TRACK_NFCTYPE3;
+        } else {
+            LOG_ERR("iso18092 is NOT present. Error: %d",err);
         }
     }
 
 
     //Test iso14443b)
 
+
     if (tags_to_find & ST95HF_TRACK_NFCTYPE4B){
+        LOG_INF("Test iso14443b");
         iso14443b_card_t card;
         err= st95hf_field_off(dev);
         if (err!=0){
@@ -223,6 +250,7 @@ int st95hf_tag_hunting(const struct device* dev, uint8_t* tags_type){
 
         err = st95hf_iso14443b_init(dev,&card);
         if (err!=0){
+            LOG_ERR("Error initiating iso14443b %d",err);
             return err;
         }
         
@@ -233,7 +261,11 @@ int st95hf_tag_hunting(const struct device* dev, uint8_t* tags_type){
             if (err==0){
                 LOG_INF("Type 4b found");
                 *tags_type=ST95HF_TRACK_NFCTYPE4B;
+            } else {
+                LOG_INF("Type 4b not found. Err: %d",err);
             }
+        } else {
+            LOG_INF("iso14443b is NOT present. Err: %d",err);
         }
     }
 

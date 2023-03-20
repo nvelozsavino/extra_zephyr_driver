@@ -127,6 +127,11 @@ typedef union {
 } iso14443a_atqa_t;
 
 
+typedef struct {
+	uint16_t fwi;
+	uint16_t fsc;	
+} iso14443a_rats_t;
+
 typedef struct{
 	/* ATQA answer to request of type A*/
 	iso14443a_atqa_t 	atqa;
@@ -143,6 +148,7 @@ typedef struct{
 	uint8_t 	fsdi;
 	uint8_t 	dri;
 	uint8_t 	dsi;
+	iso14443a_rats_t rats;
 }iso14443a_card_t;
 
 #pragma pack(push,1)
@@ -151,10 +157,6 @@ typedef struct {
     uint8_t bcc;
 } iso14443a_anticollision_t;
 
-typedef struct {
-	uint16_t fwi;
-	uint16_t fsc;	
-} iso14443a_rats_t;
 #pragma pack(pop)
 
 
@@ -167,3 +169,5 @@ int st95hf_iso14443a_is_present(const struct device* dev,iso14443a_card_t* card)
 int st95hf_iso14443a_check_type1(const struct device* dev);
 
 int st95hf_iso14443a_anticollision(const struct device* dev, iso14443a_card_t* card);
+
+int st95hf_iso14443a_read_ndef(const struct device* dev, iso14443a_card_t* card, uint8_t* buffer, size_t buffer_size);

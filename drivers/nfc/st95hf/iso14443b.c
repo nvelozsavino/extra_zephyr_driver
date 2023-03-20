@@ -1,6 +1,6 @@
 #include "iso14443b.h"
 #include "st95hf.h"
-
+#include <errno.h>
 #include <zephyr/logging/log.h>
 LOG_MODULE_DECLARE(st95hf, LOG_LEVEL_DBG);
 
@@ -31,6 +31,7 @@ int st95hf_iso14443b_init(const struct device* dev, iso14443b_card_t* card){
     st95hf_rsp_t rsp={0};
     int err =  st95hf_protocol_select_cmd(dev,&protocol_selection_req,&rsp,K_SECONDS(3));
     if (err!=0){
+        LOG_ERR("Error selecting protocol. Err %d",err);
         return err;
     }
     if (rsp.result_code!=ST95HF_STATUS_CODE_SUCCESS){
@@ -47,6 +48,7 @@ int st95hf_iso14443b_init(const struct device* dev, iso14443b_card_t* card){
     memset(&rsp,0xFF,sizeof(rsp));
     err = st95hf_write_reg_cmd(dev,&write_req,&rsp,K_SECONDS(3));
     if (err!=0){
+        LOG_ERR("Error writing reg %02x. Err: %d", write_req.reg_addr,err);
         return err;
     }
     if (rsp.result_code!=ST95HF_STATUS_CODE_SUCCESS){
@@ -109,7 +111,7 @@ int st95hf_iso14443b_init(const struct device* dev, iso14443b_card_t* card){
 }
 
 static int st95hf_iso14443b_reqb(const struct device* dev, iso14443b_atqb_t* atqb){
-    if (atqb!=NULL){
+    if (atqb==NULL){
         return -EINVAL;
     }			
     uint8_t req_data[] = {  ISO14443B_ANTICOLLISION_PREFIX_BYTE,   // APf
@@ -118,15 +120,19 @@ static int st95hf_iso14443b_reqb(const struct device* dev, iso14443b_atqb_t* atq
     };
     
     st95hf_rsp_t rsp={0};
-    rsp.len = sizeof(iso14443b_atqb_t);
-    int err = st95hf_send_receive_cmd(dev,sizeof(req_data),req_data,&rsp,atqb,K_SECONDS(3));
+    uint8_t rsp_data[sizeof(iso14443b_atqb_t)+sizeof(st95hf_sendrecv_iso14443b_footer_rsp_t)];
+    rsp.len = sizeof(rsp_data);
+    int err = st95hf_send_receive_cmd(dev,sizeof(req_data),req_data,&rsp,rsp_data,K_SECONDS(3));
     if (err!=0){
+        LOG_ERR("Error sending REQB. Err %d",err);
         return err;
     }
     if (rsp.result_code!=ST95HF_STATUS_CODE_FRAME_RECV_OK){
         LOG_ERR("Error %02x writing reg ARC B",rsp.result_code);
         return -EIO;
     }
+    LOG_HEXDUMP_DBG(rsp_data,rsp.len,"REQB:");
+    memcpy(atqb,rsp_data,sizeof(iso14443b_atqb_t));
     return 0;
 }
 
@@ -138,6 +144,7 @@ int st95hf_iso14443b_is_present(const struct device* dev,iso14443b_card_t* card)
 
     int err = st95hf_iso14443b_reqb(dev,&card->atqb);
     if (err!=0){
+        LOG_ERR("REQB failed Err: %d",err);
         return err;
     }
     
@@ -170,7 +177,15 @@ static int iso14443b_attrib(const struct device* dev, iso14443b_card_t* card){
     };
 
     memcpy(&attrib[1], card->atqb.fields.pupi, sizeof(card->atqb.fields.pupi));
-    uint8_t attrib_rsp[1+sizeof(st95hf_sendrecv_iso14443b_footer_rsp_t)+32];
+    /**
+     * ATTRIB: 
+     *  MBLI|CID (1 Byte)
+     *  Highelr Layer Response (0 to N Bytes)   N=256 <= MAX_FRAME_SIZE_256_BYTES
+     *  CRC (2 bytes)
+     * 
+     */
+
+    uint8_t attrib_rsp[1+256+2+sizeof(st95hf_sendrecv_iso14443b_footer_rsp_t)];
     st95hf_rsp_t rsp={0};
     rsp.len = sizeof(attrib_rsp);
     int err = st95hf_send_receive_cmd(dev,sizeof(attrib),attrib,&rsp,attrib_rsp,K_SECONDS(3));
