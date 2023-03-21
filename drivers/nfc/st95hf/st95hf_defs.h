@@ -1,6 +1,7 @@
 #pragma once
 #include <zephyr/types.h>
 
+
 #define ST95HF_POLL_MASK_WRITE_READY		0x04
 #define ST95HF_POLL_MASK_READ_READY			0x08
 
@@ -822,3 +823,5 @@ typedef enum {
 	ST95HF_PROTOCOL_CARD_EMULATION_ISO18092,
 } st95hf_protocol_t;	
 
+
+#define ST95HF_MAX_BUFFER_SIZE 528 

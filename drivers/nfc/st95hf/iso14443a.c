@@ -7,9 +7,8 @@ LOG_MODULE_DECLARE(st95hf, LOG_LEVEL_DBG);
 
 static void iso14443a_complete_structure (iso14443a_card_t* card );
 static int st95hf_iso14443a_reqa(const struct device* dev, iso14443a_atqa_t* data);
-static int st95hf_iso14443a_emit_rats(const struct device* dev, iso14443a_rats_t* rats);
+static int st95hf_iso14443a_emit_rats(const struct device* dev);
 static uint16_t fsci_to_fsc(uint8_t fsci);
-static int st95hf_iso14443a_config_fdt(const struct device* dev, uint8_t pp, uint8_t mm, uint8_t dd);
 static int st95hf_iso14443a_ac_level(const struct device* dev, uint8_t level, iso14443a_card_t* card);
 static int st95hf_iso14443a_ac(const struct device* dev, uint8_t cascade_level, iso14443a_anticollision_t* data);
 
@@ -17,9 +16,9 @@ static int st95hf_iso14443a_ac(const struct device* dev, uint8_t cascade_level, 
 static void init_card(iso14443a_card_t* card){
 
     memset(&card->atqa,0x00,sizeof(card->atqa));
-    memset(&card->uid,0x00,sizeof(card->uid));
+    memset(card->uid.bytes,0x00,sizeof(card->uid));
     card->cascade_level=0;
-    card->uid_size=0;
+    card->uid.size=0;
     card->ats_supported=false;
     card->is_detected=false;
 }
@@ -95,15 +94,15 @@ static void iso14443a_complete_structure (iso14443a_card_t* card ){
 	switch ((card->atqa.data[0] & ISO14443A_UID_MASK)>>6)
 	{
 			case ATQ_FLAG_UID_SINGLE_SIZE:
-				card->uid_size 			= ISO14443A_UID_SINGLE_SIZE;
+				card->uid.size 			= ISO14443A_UID_SINGLE_SIZE;
 				card->cascade_level 	= CASCADE_LVL_1;
 			break;
 			case ATQ_FLAG_UID_DOUBLE_SIZE:
-				card->uid_size 			= ISO14443A_UID_DOUBLE_SIZE;
+				card->uid.size 			= ISO14443A_UID_DOUBLE_SIZE;
 				card->cascade_level 	= CASCADE_LVL_2;
 			break;
 			case ATQ_FLAG_UID_TRIPLE_SIZE:
-				card->uid_size 			= ISO14443A_UID_TRIPLE_SIZE;
+				card->uid.size 			= ISO14443A_UID_TRIPLE_SIZE;
 				card->cascade_level 	= CASCADE_LVL_3;
 			break;
 	}
@@ -127,7 +126,7 @@ int st95hf_iso14443a_is_present(const struct device* dev,iso14443a_card_t* card)
 
 
 
-int st95hf_iso14443a_check_type1(const struct device* dev){
+int st95hf_iso14443a_check_type1(const struct device* dev,iso14443a_card_t* card){
     st95hf_data_t* st95hf = dev->data;
     const uint8_t data[] = {0x78, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xA8};
     uint8_t buffer[20]={0};
@@ -145,8 +144,8 @@ int st95hf_iso14443a_check_type1(const struct device* dev){
         return -ENOMSG;
     }
 
-    if (rsp.len<sizeof(st95hf_sendrecv_iso14443a_footer_rsp_t)){
-        LOG_ERR("Error rsp len less than footer");
+    if (rsp.len<8+sizeof(st95hf_sendrecv_iso14443a_footer_rsp_t)){
+        LOG_ERR("Error rsp len %d less than expected data %d",rsp.len,8+sizeof(st95hf_sendrecv_iso14443a_footer_rsp_t));
         return -ENODATA;
     }
     st95hf_sendrecv_iso14443a_footer_rsp_t* footer = (st95hf_sendrecv_iso14443a_footer_rsp_t*)&buffer[rsp.len-sizeof(st95hf_sendrecv_iso14443a_footer_rsp_t)];
@@ -161,6 +160,8 @@ int st95hf_iso14443a_check_type1(const struct device* dev){
     } else {
         st95hf->device_mode = ST95HF_DEVICE_MODE_PCD;
         st95hf->tag_type=ST95HF_TAG_TYPE_TT1;
+        memcpy(card->uid.bytes,&buffer[2],4);
+        card->uid.size=4;
         return 0;
     }
         
@@ -398,23 +399,23 @@ static int st95hf_iso14443a_ac_level(const struct device* dev, uint8_t level, is
         LOG_ERR("Error AC cascade_level %02x. Err: %d",cascade_level, err);
         return err;
     }
-    if (!only_part && card->uid_size== uid_size){
-        memcpy(&card->uid[uid_start],ac_data.uid,ISO14443A_UID_SINGLE_SIZE);
+    if (!only_part && card->uid.size== uid_size){
+        memcpy(&card->uid.bytes[uid_start],ac_data.uid,ISO14443A_UID_SINGLE_SIZE);
     } else {
-        memcpy(&card->uid[uid_start],&ac_data.uid[part_start],part_size);
+        memcpy(&card->uid.bytes[uid_start],&ac_data.uid[part_start],part_size);
     }
     uint8_t bcc = ac_data.bcc;
     LOG_DBG("BCC = %02x", bcc);
     uint8_t len =0;
     send_data[len++]=cascade_level;
     send_data[len++]=ISO14443A_NVM_70;
-    LOG_INF("UID Size: %d== Expected %d, only_part %d", card->uid_size, uid_size, only_part);
-    if (card->uid_size== uid_size){
-        memcpy(&send_data[len],&card->uid[uid_start],ISO14443A_UID_SINGLE_SIZE);
+    LOG_INF("UID Size: %d== Expected %d, only_part %d", card->uid.size, uid_size, only_part);
+    if (card->uid.size== uid_size){
+        memcpy(&send_data[len],&card->uid.bytes[uid_start],ISO14443A_UID_SINGLE_SIZE);
         len+=ISO14443A_UID_SINGLE_SIZE;
     } else if (!only_part) {
         send_data[len++] = 0x88;
-        memcpy(&send_data[len],&card->uid[uid_start],ISO14443A_UID_PART);
+        memcpy(&send_data[len],&card->uid.bytes[uid_start],ISO14443A_UID_PART);
         len+=ISO14443A_UID_PART;
     }
     send_data[len++]=bcc;
@@ -441,7 +442,7 @@ static int st95hf_iso14443a_ac_level(const struct device* dev, uint8_t level, is
     return 0;
 }
 
-static int st95hf_iso14443a_config_fdt(const struct device* dev, uint8_t pp, uint8_t mm, uint8_t dd){
+int st95hf_iso14443a_config_fdt(const struct device* dev, uint8_t pp, uint8_t mm, uint8_t dd){
 
 
     st95hf_protocol_selection_req_t req = {
@@ -508,10 +509,11 @@ static uint16_t fsci_to_fsc(uint8_t fsci){
 	else return 256;
 }
 
-static int st95hf_iso14443a_emit_rats(const struct device* dev, iso14443a_rats_t* rats){
-    if (dev==NULL || rats==NULL){
+static int st95hf_iso14443a_emit_rats(const struct device* dev){
+    if (dev==NULL){
         return -EINVAL;
     }
+    st95hf_data_t *st95hf = dev->data;
     uint8_t send_data[2+sizeof(st95hf_sendrecv_iso14443a_footer_req_t)] = {0xE0,0x80,0x28};
     // st95hf_sendrecv_iso14443a_footer_req_t* footer = (st95hf_sendrecv_iso14443a_footer_req_t*)&send_data[2];
     // footer->fields.append_crc=1;
@@ -534,13 +536,13 @@ static int st95hf_iso14443a_emit_rats(const struct device* dev, iso14443a_rats_t
     
     
     uint8_t fsci = rsp_data[1] & 0x0F;
-    rats->fsc = fsci_to_fsc(fsci);
+    st95hf->fsc = fsci_to_fsc(fsci);
     /* Check if FWI is present */
     if ((rsp_data[1] & 0x20) == 0x20){
         if ((rsp_data[1]&0x10)==0x10) {
-            rats->fwi=(rsp_data[3]&0xF0)>>4;            
+            st95hf->fwi=(rsp_data[3]&0xF0)>>4;            
         } else {
-            rats->fwi=(rsp_data[2]&0xF0)>>4;
+            st95hf->fwi=(rsp_data[2]&0xF0)>>4;
         }
     }
     
@@ -553,10 +555,11 @@ static int st95hf_iso14443a_emit_rats(const struct device* dev, iso14443a_rats_t
 
 int st95hf_iso14443a_anticollision(const struct device* dev, iso14443a_card_t* card){
 
-    st95hf_data_t *st95hf = dev->data;
+   
     if (dev==NULL || card==NULL){
         return -EINVAL;
     }
+    st95hf_data_t *st95hf = dev->data;
     int err;
     uint8_t level=0;
     bool not_complete=true;
@@ -574,9 +577,6 @@ int st95hf_iso14443a_anticollision(const struct device* dev, iso14443a_card_t* c
     }
     LOG_INF("Anticollision done Level %d, not_complete %d",level,not_complete);
 
-
-    card->rats.fsc =32;
-    card->rats.fwi=4;
 	/* Checks if the RATS command is supported by the card */
     if (card->sak & SAK_FLAG_ATS_SUPPORTED){
     LOG_INF("ATS Supported");
@@ -600,15 +600,15 @@ int st95hf_iso14443a_anticollision(const struct device* dev, iso14443a_card_t* c
 
         card->ats_supported=true;
         LOG_INF("Emmiting RATS");
-        err = st95hf_iso14443a_emit_rats(dev,&card->rats);
+        err = st95hf_iso14443a_emit_rats(dev);
         if (err!=0){
             LOG_ERR("Error emiting RATS. %d",err);
             return err;
         }
-        LOG_INF("RATS done, fwi: %d",card->rats.fwi);
+        LOG_INF("RATS done, fwi: %d",st95hf->fwi);
     }
-    if (card->rats.fwi<4){
-        card->rats.fwi=4;
+    if (st95hf->fwi<4){
+        st95hf->fwi=4;
     }
     uint8_t wtxm =1;
     	
@@ -639,7 +639,7 @@ int st95hf_iso14443a_anticollision(const struct device* dev, iso14443a_card_t* c
     */
     LOG_INF("Reconfiguring FDT");
 
-    err = st95hf_iso14443a_config_fdt(dev,card->rats.fwi,wtxm,0);
+    err = st95hf_iso14443a_config_fdt(dev,st95hf->fwi,wtxm,0);
     if (err!=0){
         LOG_ERR("Error configuring FDT for RATS. %d",err);
         return err;

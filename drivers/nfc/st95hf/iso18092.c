@@ -118,7 +118,7 @@ int st95hf_iso18092_is_present(const struct device* dev,iso18092_card_t* card){
     }    
     card->is_detected=true;
     memcpy(&card->atqc,&atqc,sizeof(iso18092_atqc_t));
-    memcpy(card->uid,&card->atqc.data[1],sizeof(card->uid));
+    memcpy(card->uid.bytes,&card->atqc.data[1],sizeof(card->uid));
 
     st95hf->device_mode=ST95HF_DEVICE_MODE_PCD;
     st95hf->tag_type = ST95HF_TAG_TYPE_TT3;

@@ -142,11 +142,17 @@
 #define ISO14443B_MAX_PROTOCOL_SIZE			         0x03
 #define ISO14443B_MAX_LOG_MSG                    60
 
+
+typedef union {
+	uint8_t 	bytes[ISO14443B_MAX_PUPI_SIZE];
+} iso14443b_pupi_t;
+
+
 typedef union {
     uint8_t data[ISO14443B_ATQB_SIZE];
     struct {
         uint8_t opc;
-        uint8_t pupi[ISO14443B_MAX_PUPI_SIZE];
+        iso14443b_pupi_t pupi;
         uint8_t application_field[ISO14443B_MAX_APPLI_SIZE];
 	    uint8_t protocol_info[ISO14443B_MAX_PROTOCOL_SIZE];
 	    uint8_t crc_b[2];

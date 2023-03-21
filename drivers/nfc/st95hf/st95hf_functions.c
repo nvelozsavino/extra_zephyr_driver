@@ -3,6 +3,8 @@
 #include "iso14443a.h"
 #include "iso14443b.h"
 #include "iso18092.h"
+#include "nfc_type4.h"
+
 LOG_MODULE_DECLARE(st95hf, LOG_LEVEL_DBG);
 
 
@@ -124,16 +126,14 @@ static int st95hf_field_off(const struct device* dev){
 
 
 
-int st95hf_tag_hunting(const struct device* dev, uint8_t* tags_type){
-    if (dev==NULL || tags_type==NULL){
+int st95hf_tag_hunting(const struct device* dev, uint8_t tags_to_find, nfc_uid_t* uid){
+    if (dev==NULL || uid==NULL){
         return -EINVAL;
     }
     st95hf_data_t* st95hf = dev->data;
-
+    uid->type=NFC_CARD_PROTOCOL_NONE;
     st95hf->device_mode = ST95HF_DEVICE_MODE_UNDEFINED;
     st95hf->tag_type = ST95HF_TAG_TYPE_UNDEFINED;
-    uint8_t tags_to_find = *tags_type;
-    *tags_type=0x00;
     int err=0;
     if (tags_to_find & ST95HF_TRACK_NFCTYPE1){
         LOG_INF("Checking for Types 1");
@@ -156,10 +156,11 @@ int st95hf_tag_hunting(const struct device* dev, uint8_t* tags_type){
             LOG_INF("ISO14443A is present");
             
             LOG_INF("Checking for ISO14443A Type 1");
-            err = st95hf_iso14443a_check_type1(dev);
+            err = st95hf_iso14443a_check_type1(dev,&card);
             if (err==0){
                 LOG_INF("ISO14443A Type 1 found");
-                *tags_type=ST95HF_TRACK_NFCTYPE1;
+                uid->type=NFC_CARD_PROTOCOL_ISO14443A_TYPE1;
+                memcpy(&uid->uid.iso14443a,&card.uid,sizeof(iso14443a_uid_t));                
                 return 0;
             } else {
                 LOG_INF("ISO14443A Type 1 not found. Err %d",err);
@@ -192,13 +193,18 @@ int st95hf_tag_hunting(const struct device* dev, uint8_t* tags_type){
             err = st95hf_iso14443a_anticollision(dev,&card);
             if (err==0){
                 LOG_INF("ISO14443A anticollision found");
+
                 if ((card.sak& 0x60)==0x00){
                     LOG_INF("ISO14443A Type 2 found");
-                    *tags_type=ST95HF_TRACK_NFCTYPE2;
+                    LOG_HEXDUMP_INF(card.uid.bytes,card.uid.size,"UID:");                
+                    uid->type=NFC_CARD_PROTOCOL_ISO14443A_TYPE2;
+                    memcpy(&uid->uid.iso14443a,&card.uid,sizeof(iso14443a_uid_t));     
                     return 0;
                 } else if ((card.sak& 0x20)!=0x00){
                     LOG_INF("ISO14443A Type 4A found");
-                    *tags_type=ST95HF_TRACK_NFCTYPE4A;
+                    LOG_HEXDUMP_INF(card.uid.bytes,card.uid.size,"UID:");
+                    uid->type=NFC_CARD_PROTOCOL_ISO14443A_TYPE4A;
+                    memcpy(&uid->uid.iso14443a,&card.uid,sizeof(iso14443a_uid_t));                         
                     return 0;
                 }
             } else {
@@ -227,8 +233,9 @@ int st95hf_tag_hunting(const struct device* dev, uint8_t* tags_type){
         
         err = st95hf_iso18092_is_present(dev,&card);
         if (err == 0){
-            LOG_INF("iso18092 is present. Type 3 found");
-            *tags_type=ST95HF_TRACK_NFCTYPE3;
+            LOG_INF("iso18092 is present. Type 3 found");            
+            uid->type=NFC_CARD_PROTOCOL_ISO18092_TYPE3;
+            memcpy(&uid->uid.iso18092,&card.uid,sizeof(iso18092_uid_t));     
         } else {
             LOG_ERR("iso18092 is NOT present. Error: %d",err);
         }
@@ -260,7 +267,10 @@ int st95hf_tag_hunting(const struct device* dev, uint8_t* tags_type){
             err = st95hf_iso14443b_anticollision(dev,&card);
             if (err==0){
                 LOG_INF("Type 4b found");
-                *tags_type=ST95HF_TRACK_NFCTYPE4B;
+                LOG_HEXDUMP_INF(card.atqb.fields.pupi.bytes,sizeof(card.atqb.fields.pupi),"PUPI:");
+                uid->type=NFC_CARD_PROTOCOL_ISO14443B_TYPE4B;
+                memcpy(&uid->uid.iso14443b,&card.atqb.fields.pupi,sizeof(iso14443b_pupi_t));     
+                return 0;
             } else {
                 LOG_INF("Type 4b not found. Err: %d",err);
             }
@@ -278,3 +288,27 @@ int st95hf_tag_hunting(const struct device* dev, uint8_t* tags_type){
 
     return 0;
 }   
+
+
+
+int st95hf_read_ndef_from_tag(const struct device* dev, uint16_t *ndef_size, uint8_t *ndef){
+    if (dev==NULL || ndef_size==NULL || ndef==NULL){
+        return -EINVAL;
+    }
+    st95hf_data_t* st95hf = dev->data;
+    switch(st95hf->tag_type){
+        default:
+            return -ENOLINK;
+        case ST95HF_TAG_TYPE_TT4A:
+        case ST95HF_TAG_TYPE_TT4B:{
+
+            int err = st95hf_type4_read_ndef(dev,ndef_size,ndef);
+            if (err !=0){
+                LOG_ERR("Error reading NDEF %d",err);
+                return err;
+            }
+            return 0;
+        }
+    }
+    return -EINVAL;
+}

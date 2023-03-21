@@ -126,19 +126,19 @@ typedef union {
 	} fields;
 } iso14443a_atqa_t;
 
-
+#pragma pack(push,1)
 typedef struct {
-	uint16_t fwi;
-	uint16_t fsc;	
-} iso14443a_rats_t;
+	uint8_t 	size;
+	uint8_t 	bytes[ISO14443A_MAX_UID_SIZE];
+} iso14443a_uid_t;
+#pragma pack(pop)
 
 typedef struct{
 	/* ATQA answer to request of type A*/
 	iso14443a_atqa_t 	atqa;
 	uint8_t 	cascade_level;
 	/* UID : unique Identification*/
-	uint8_t 	uid_size;
-	uint8_t 	uid[ISO14443A_MAX_UID_SIZE];
+	iso14443a_uid_t 	uid;
 	/* SAK : Select acknowledge*/
 	uint8_t 	sak;
 	bool 		ats_supported;
@@ -148,7 +148,6 @@ typedef struct{
 	uint8_t 	fsdi;
 	uint8_t 	dri;
 	uint8_t 	dsi;
-	iso14443a_rats_t rats;
 }iso14443a_card_t;
 
 #pragma pack(push,1)
@@ -166,8 +165,10 @@ int st95hf_iso14443a_init(const struct device* dev, iso14443a_card_t* card);
 
 int st95hf_iso14443a_is_present(const struct device* dev,iso14443a_card_t* card);
 
-int st95hf_iso14443a_check_type1(const struct device* dev);
+int st95hf_iso14443a_check_type1(const struct device* dev,iso14443a_card_t* card);
 
 int st95hf_iso14443a_anticollision(const struct device* dev, iso14443a_card_t* card);
 
 int st95hf_iso14443a_read_ndef(const struct device* dev, iso14443a_card_t* card, uint8_t* buffer, size_t buffer_size);
+
+int st95hf_iso14443a_config_fdt(const struct device* dev, uint8_t pp, uint8_t mm, uint8_t dd);

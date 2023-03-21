@@ -176,7 +176,7 @@ static int iso14443b_attrib(const struct device* dev, iso14443b_card_t* card){
                             CID_0	                     
     };
 
-    memcpy(&attrib[1], card->atqb.fields.pupi, sizeof(card->atqb.fields.pupi));
+    memcpy(&attrib[1], card->atqb.fields.pupi.bytes, sizeof(card->atqb.fields.pupi));
     /**
      * ATTRIB: 
      *  MBLI|CID (1 Byte)

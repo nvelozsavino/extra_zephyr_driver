@@ -17,7 +17,7 @@
 #include <string.h>
 #include <zephyr/drivers/spi.h>
 #include "st95hf_defs.h"
-
+#include "nfc_tag_def.h"
 
 typedef struct {
 	struct spi_dt_spec bus;
@@ -43,10 +43,14 @@ typedef struct {
 #else
 	bool user_stop;
 #endif /* CONFIG_ST95HF_TRIGGER */
+
 	st95hf_ic_version_t ic_version;
 	st95hf_protocol_t current_protocol;
 	st95hf_device_mode_t device_mode;
 	st95hf_tag_type_t tag_type;
+	uint8_t fwi;
+	uint8_t fsc;
+	uint8_t block_number;
 } st95hf_data_t;
 
 #ifdef CONFIG_ST95HF_TRIGGER
@@ -100,6 +104,7 @@ int st95hf_stop_waiting(const struct device* dev, bool force, bool pulse_irq);
  * Functions
 */
 int st95hf_tag_calibration(const struct device* dev, uint8_t wu_period, uint8_t* data_h);
-int st95hf_tag_hunting(const struct device* dev, uint8_t* tags_type);
+int st95hf_tag_hunting(const struct device* dev, uint8_t tags_type, nfc_uid_t* uid);
+int st95hf_read_ndef_from_tag(const struct device* dev, uint16_t *ndef_size, uint8_t *ndef);
 
 #endif /* __SENSOR_ST95HF__ */

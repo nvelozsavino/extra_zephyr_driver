@@ -759,6 +759,12 @@ int st95hf_init(const struct device *dev)
 	st95hf_rsp_t rsp;
 	st95hf_idn_data_t idn;
 	st95hf->ic_version=ST95HF_IC_VERSION_UNKNOWN;
+
+	st95hf->fsc=32;
+	st95hf->fwi=4;
+	st95hf->block_number=0x02;
+
+
 	status = st95hf_idn_cmd(dev,&rsp,&idn,K_MSEC(10));
 	if (status < 0) {
 		LOG_ERR("Failed to read chip id. %d",status);

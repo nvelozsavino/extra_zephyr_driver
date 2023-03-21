@@ -28,10 +28,15 @@
 #define ISO15693_NBBITS_MASKPARAMETER   				64
 #pragma pack(push,1)
 typedef union {
+	uint8_t 	uid[ISO15693_NBBYTE_UID];
+} iso15963_uid_t;
+
+
+typedef union {
     uint8_t data[ISO15693_NBBYTE_UID+4];
     struct {        
         uint8_t unknown[2];
-        uint8_t uid[ISO15693_NBBYTE_UID];        
+        iso15963_uid_t uid;        
         uint8_t crc[2];
         // uint8_t application_field[ISO14443B_MAX_APPLI_SIZE];
 	    // uint8_t protocol_info[ISO14443B_MAX_PROTOCOL_SIZE];

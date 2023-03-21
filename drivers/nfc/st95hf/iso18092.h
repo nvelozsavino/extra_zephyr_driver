@@ -19,11 +19,17 @@
 typedef struct {
     uint8_t data[ISO18092_ATQC_SIZE];
 } iso18092_atqc_t;
+
+typedef union {
+	uint8_t 	bytes[ISO18092_UID_SIZE];
+} iso18092_uid_t;
+
+
 #pragma pack(pop)
 
 typedef struct {
 	iso18092_atqc_t atqc;
-	uint8_t uid	[ISO18092_UID_SIZE];
+	iso18092_uid_t uid;
 	bool 		is_detected;
 //	char		log_msg[120];
 } iso18092_card_t;
