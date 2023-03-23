@@ -53,6 +53,10 @@ config ST95HF_THREAD_STACK_SIZE
 config ST95HF_BLOCK_DATA_UPDATE
 	bool "Output registers not updated until MSB and LSB read"
 
+config ST95HF_VERBOSE
+	bool	"Enable Verbose logging"
+	default n
+
 choice ST95HF_READ_MODE
 	prompt "Read mode"
 	default ST95HF_READ_AS_DATASHEET

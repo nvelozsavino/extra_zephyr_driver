@@ -672,8 +672,10 @@ int st95hf_req_rsp(const struct device* dev, const st95hf_req_t* req, st95hf_rsp
 	if (rsp->len!=0 && rsp_data==NULL){
 		return -EINVAL;
 	}
+#ifdef CONFIG_ST95HF_VERBOSE
 	LOG_DBG(">>> %02x %02x",req->cmd,req->len);
 	LOG_HEXDUMP_DBG(req->data,req->len,">>> data");
+#endif
 	int err = st95hf_send(dev,req->cmd,req->len,req->data);
 	if (err!=0){
 		LOG_ERR("Error sending. %d",err);
@@ -688,8 +690,10 @@ int st95hf_req_rsp(const struct device* dev, const st95hf_req_t* req, st95hf_rsp
 	}
 	err = st95hf_receive(dev,&rsp->result_code,rsp_data,&rsp->len);
 	// LOG_DBG("<<< %s",dbg_req(rsp->result_code,rsp->len,rsp_data));
+#ifdef CONFIG_ST95HF_VERBOSE	
 	LOG_DBG("<<< %02x %02x",rsp->result_code,rsp->len);
 	LOG_HEXDUMP_DBG(rsp_data,rsp->len,">>> data");
+#endif
 	if (err!=0){
 		LOG_ERR("Error receiving. %d",err);
 	}
