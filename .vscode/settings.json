@@ -1,3 +1,4 @@
 {
-    "nrf-connect.toolchain.path": "PATH"
+    "nrf-connect.toolchain.path": "PATH",
+    "cmake.configureOnOpen": false
 }
