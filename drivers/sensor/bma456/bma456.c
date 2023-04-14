@@ -735,9 +735,9 @@ static int bma456_pm_action(const struct device *dev,
 
 #define BMA456_CFG_INT(inst)				\
 	.gpio_int1 =							\
-		GPIO_DT_SPEC_INST_GET_BY_IDX_COND(inst, int_gpios, 0),	\
+		GPIO_DT_SPEC_INST_GET_BY_IDX_COND(inst, int1_gpios, 0),	\
 	.gpio_int2 =								\
-		GPIO_DT_SPEC_INST_GET_BY_IDX_COND(inst, int_gpios, 1),
+		GPIO_DT_SPEC_INST_GET_BY_IDX_COND(inst, int2_gpios, 0),
 #else
 #define BMA456_CFG_INT(inst)
 #endif /* CONFIG_BMA456_TRIGGER */
