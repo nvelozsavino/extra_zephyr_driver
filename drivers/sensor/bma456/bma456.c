@@ -503,12 +503,22 @@ int bma456_init(const struct device *dev)
 	}
 	
 	int8_t rslt=0;
+	LOG_WRN("BOSH bma4_soft_reset");
+
+	rslt = bma4_soft_reset(bma);
+	if (rslt<0){
+		LOG_ERR("Error init bma456mm %d",rslt);
+		return -EIO;
+	}
+
 #ifdef CONFIG_BMA456_VARIANT_MM
+	LOG_WRN("BOSH bma456mm_init");
 	rslt = bma456mm_init(bma);
 	if (rslt<0){
 		LOG_ERR("Error init bma456mm %d",rslt);
 		return -EIO;
 	}
+	LOG_WRN("BOSH bma456mm_write_config_file");
 	rslt = bma456mm_write_config_file(bma);
 	if (rslt<0){
 		LOG_ERR("Error writing bma456mm config %d",rslt);
@@ -553,16 +563,7 @@ int bma456_init(const struct device *dev)
 	}
 #endif
 
-	
-#ifdef CONFIG_BMA456_TRIGGER
-	if (cfg->gpio_int1.port != NULL || cfg->gpio_int2.port != NULL) {
-		status = bma456_init_interrupt(dev);
-		if (status < 0) {
-			LOG_ERR("Failed to initialize interrupts.");
-			return status;
-		}
-	}
-#endif
+
 	struct bma4_accel_config accel_conf = { 0 };
 	rslt = bma4_get_accel_config(&accel_conf,bma);
 	if (rslt!=BMA4_OK){
@@ -628,18 +629,30 @@ int bma456_init(const struct device *dev)
      */
     accel_conf.perf_mode = BMA4_CIC_AVG_MODE;
 
-
+	LOG_WRN("BOSH bma4_set_accel_config");
     rslt = bma4_set_accel_config(&accel_conf, bma);
 	if (rslt<0){
 		LOG_ERR("Error setting accelerometer config %d",rslt);
 		return -EIO;
 	}
 
+
+	LOG_WRN("BOSH bma4_set_accel_enable");
 	rslt = bma4_set_accel_enable(BMA4_ENABLE, bma);
 	if (rslt<0){
 		LOG_ERR("Error enabling accelerometer %d",rslt);
 		return -EIO;
 	}
+
+#ifdef CONFIG_BMA456_TRIGGER
+	if (cfg->gpio_int1.port != NULL || cfg->gpio_int2.port != NULL) {
+		status = bma456_init_interrupt(dev);
+		if (status < 0) {
+			LOG_ERR("Failed to initialize interrupts.");
+			return status;
+		}
+	}
+#endif
 
 
 	return 0;

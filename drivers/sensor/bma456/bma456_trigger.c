@@ -58,9 +58,10 @@ static inline void setup_int1(const struct device *dev,
 {
 	const struct bma456_config *cfg = dev->config;
 
+	// LOG_WRN("Setup1 %d",enable);
 	gpio_pin_interrupt_configure_dt(&cfg->gpio_int1,
 					enable
-					? GPIO_INT_LEVEL_ACTIVE
+					? GPIO_INT_EDGE_TO_ACTIVE
 					: GPIO_INT_DISABLE);
 }
 
@@ -68,13 +69,81 @@ static inline void setup_int2(const struct device *dev,
 			      bool enable)
 {
 	const struct bma456_config *cfg = dev->config;
-
+	LOG_WRN("Setup2 %d",enable);
 	gpio_pin_interrupt_configure_dt(&cfg->gpio_int2,
 					enable
-					? GPIO_INT_LEVEL_ACTIVE
+					? GPIO_INT_EDGE_TO_ACTIVE
 					: GPIO_INT_DISABLE);
 }
 
+
+
+
+static int bma456_trigger_map_helper(const struct device *dev, 
+					bma456_trigger_t* trigger_handler,
+					uint8_t trigger,
+					uint16_t int_map,
+				   const struct sensor_trigger *trig,
+				   sensor_trigger_handler_t handler)
+{
+	const struct bma456_config *cfg = dev->config;
+	struct bma456_data *bma456 = dev->data;
+	struct bma4_dev *bma = &bma456->bma;
+	int8_t rslt;
+	uint8_t map;
+
+	if (bma456->int1_triggers & trigger){
+		if (cfg->gpio_int1.port == NULL) {
+			LOG_ERR("trigger_set %02x int not supported",trigger);
+			return -ENOTSUP;
+		}
+		map = BMA4_INTR1_MAP;
+		LOG_INF("Enabling trigger %02x in int1", trigger);
+		// setup_int1(dev,false);
+	} else if (bma456->int2_triggers & trigger){
+		if (cfg->gpio_int2.port == NULL) {
+			LOG_ERR("trigger_set %02x int not supported", trigger);
+			return -ENOTSUP;
+		}
+		map = BMA4_INTR2_MAP;
+		LOG_INF("Enabling trigger %02x in int2", trigger);
+		// setup_int2(dev,false);
+	} else {
+		LOG_WRN("Int1:%08x, Int2: %08x, trigger %08x",trigger);
+		return -ENOTSUP;
+	}
+
+	LOG_INF("Disabling int_map %04x in pin %d",int_map,map);
+
+   	rslt = bma4_map_interrupt(map, int_map, BMA4_DISABLE, bma);
+	if (rslt != BMA4_OK) {
+		LOG_ERR("Error removing %04x map from int1 (%d)", int_map, rslt);
+		return -EIO;
+	}
+
+
+
+	trigger_handler->handler = handler;
+	if (handler == NULL) {
+		LOG_INF("Trigger disabled");
+		return 0;
+	}
+
+	trigger_handler->trigger = *trig;
+	LOG_INF("Enabling int_map %04x in pin %d",int_map,map);
+  	rslt = bma4_map_interrupt(map, int_map, BMA4_ENABLE, bma);
+	if (rslt != BMA4_OK) {
+		LOG_ERR("Error setting %04x map from int (%d)", int_map, rslt);
+		return -EIO;
+	}
+	// if (map==BMA4_INTR1_MAP){
+	// 	setup_int1(dev,true);
+	// } else {
+	// 	setup_int2(dev,true);
+	// }
+	LOG_WRN("Int %d pin %d",map, gpio_pin_get(cfg->gpio_int1.port,cfg->gpio_int1.pin));
+	return 0;
+}
 
 static int bma456_trigger_set_helper(const struct device *dev, 
 					bma456_trigger_t* trigger_handler,
@@ -133,7 +202,7 @@ static int bma456_trigger_set_helper(const struct device *dev,
 
   	rslt = bma4_map_interrupt(map, int_map, BMA4_ENABLE, bma);
 	if (rslt != BMA4_OK) {
-		LOG_ERR("Error setting %04x map from int1 (%d)", int_map, rslt);
+		LOG_ERR("Error setting %04x map from int (%d)", int_map, rslt);
 		return -EIO;
 	}
 	if (toggle_feature){
@@ -143,7 +212,13 @@ static int bma456_trigger_set_helper(const struct device *dev,
 			return -EIO;
 		}	
 	}
+	LOG_WRN("Int1 pin %d",gpio_pin_get(cfg->gpio_int1.port,cfg->gpio_int1.pin));
 
+	#if defined(CONFIG_BMA456_TRIGGER_OWN_THREAD)
+		k_sem_give(&bma456->gpio_sem);
+	#elif defined(CONFIG_BMA456_TRIGGER_GLOBAL_THREAD)
+		k_work_submit(&bma456->work);
+	#endif
 	return 0;
 }
 
@@ -250,11 +325,110 @@ static int bma456_trigger_set_helper(const struct device *dev,
 
 // }
 
+static int config_any_no_motion(const struct device* dev,const struct sensor_trigger *trig,
+		       sensor_trigger_handler_t handler, bool is_any){
+	struct bma456_data *bma456 = dev->data;	
+	struct bma4_dev *bma = &bma456->bma;
+	uint8_t axes;
+	bool on=true;
+	if (handler==NULL){
+		on=false;
+	}
+	switch (trig->chan){
+		case SENSOR_CHAN_ACCEL_XYZ:
+			axes = BMA456MM_EN_ALL_AXIS;
+			break;
+		case SENSOR_CHAN_ACCEL_X:
+			axes = BMA456MM_X_AXIS_EN;
+			break;
+		case SENSOR_CHAN_ACCEL_Y:
+			axes = BMA456MM_Y_AXIS_EN;
+			break;
+		case SENSOR_CHAN_ACCEL_Z:
+			axes = BMA456MM_Z_AXIS_EN;
+			break;
+		default:
+			return -EINVAL;
+
+	}
+
+	bma456_trigger_t* trigger_handler;
+	uint8_t bma_trigger;
+	uint16_t int_map;
+	if (is_any){
+		trigger_handler = &bma456->handlers.any_motion;
+		bma_trigger=BMA456_TRIGGER_ANY_MOTION;
+		int_map = BMA456MM_ANY_MOT_INT;
+	} else {
+		trigger_handler = &bma456->handlers.no_motion;
+		bma_trigger=BMA456_TRIGGER_NO_MOTION;
+		int_map = BMA456MM_NO_MOT_INT;
+	}
+	int err = bma456_trigger_map_helper(dev,trigger_handler,bma_trigger,int_map,trig,handler);
+	if (err!=0){
+		return err;
+	}
+
+	int8_t rslt;
+	struct bma456mm_any_no_mot_config any_no_mot = { 0 };
+    /* Getting any-motion configuration to get default configuration */
+	if (is_any){
+    	rslt = bma456mm_get_any_mot_config(&any_no_mot, bma);
+	} else {
+		rslt = bma456mm_get_no_mot_config(&any_no_mot, bma);
+	}
+	if (rslt!=BMA4_OK){
+		LOG_ERR("Error getting %s motion config %d",is_any?"any":"no", rslt);		
+		return -EIO;
+	}
+	
+	if (on){
+		any_no_mot.axes_en |= axes;
+		/*
+         * Set the slope threshold:
+         *  Interrupt will be generated if the slope of all the axis exceeds the threshold (1 bit = 0.48mG)
+         */
+        any_no_mot.threshold = 10;
+		/*
+         * Set the duration for any-motion interrupt:
+         *  Duration defines the number of consecutive data points for which threshold condition must be true(1
+         * bit =
+         * 20ms)
+         */
+        any_no_mot.duration = 4;
+
+	} else {
+		any_no_mot.axes_en &= ~axes;
+	}
+        
+
+	/* Like threshold and duration, we can also change the config of int_bhvr and slope */
+
+	/* Set the threshold and duration configuration */
+	if (is_any){
+		rslt = bma456mm_set_any_mot_config(&any_no_mot, bma);
+	} else {
+		rslt = bma456mm_set_no_mot_config(&any_no_mot, bma);
+	}
+
+	if (rslt!=BMA4_OK){
+		LOG_ERR("Error setting %s motion config %d",is_any?"any":"no", rslt);		
+		return -EIO;
+	}
+
+	#if defined(CONFIG_BMA456_TRIGGER_OWN_THREAD)
+		k_sem_give(&bma456->gpio_sem);
+	#elif defined(CONFIG_BMA456_TRIGGER_GLOBAL_THREAD)
+		k_work_submit(&bma456->work);
+	#endif
+	return 0;
+}
+
 
 int bma456_trigger_set(const struct device *dev,
 		       const struct sensor_trigger *trig,
 		       sensor_trigger_handler_t handler)
-{
+{	LOG_INF("Set trigger: %d",trig->type);
 	// const struct bma456_config *cfg = dev->config;
 	struct bma456_data *bma456 = dev->data;	
 	switch (trig->type){
@@ -263,19 +437,26 @@ int bma456_trigger_set(const struct device *dev,
 				&bma456->handlers.data_ready,
 				BMA456_TRIGGER_DATA_READY,BMA4_DATA_RDY_INT,
 			 	trig, handler, false,0);
-		case SENSOR_TRIG_DELTA:
-			return bma456_trigger_set_helper(dev,
-				&bma456->handlers.any_motion,
-				BMA456_TRIGGER_ANY_MOTION,BMA456MM_ANY_MOT_INT,
-			 	trig, handler, false,0);
+		case SENSOR_TRIG_MOTION:
+			return config_any_no_motion(dev,trig,handler,true);
+			// return bma456_trigger_set_helper(dev,
+			// 	&bma456->handlers.any_motion,
+			// 	BMA456_TRIGGER_ANY_MOTION,BMA456MM_ANY_MOT_INT,
+			//  	trig, handler, false,0);
+		case SENSOR_TRIG_STATIONARY:
+			return config_any_no_motion(dev,trig,handler,false);
+			// return bma456_trigger_set_helper(dev,
+			// 	&bma456->handlers.no_motion,
+			// 	BMA456_TRIGGER_NO_MOTION,BMA456MM_NO_MOT_INT,
+			//  	trig, handler, false,0);				
 		case SENSOR_TRIG_TAP:
 			return bma456_trigger_set_helper(dev,
-				&bma456->handlers.any_motion,
+				&bma456->handlers.tap,
 				BMA456_TRIGGER_TAP,BMA456MM_TAP_OUT_INT,
 			 	trig, handler,true,BMA456MM_SINGLE_TAP);
 		case SENSOR_TRIG_DOUBLE_TAP:
 			return bma456_trigger_set_helper(dev,
-				&bma456->handlers.any_motion,
+				&bma456->handlers.double_tap,
 				BMA456_TRIGGER_DOUBLE_TAP,BMA456MM_TAP_OUT_INT,
 			 	trig, handler, true,BMA456MM_DOUBLE_TAP);
 		default:
@@ -349,8 +530,9 @@ static void bma456_gpio_int1_callback(const struct device *dev,
 {
 	struct bma456_data *bma456 =
 		CONTAINER_OF(cb, struct bma456_data, gpio_int1_cb);
-
+	
 	ARG_UNUSED(pins);
+	// LOG_WRN("Callback1");
 
 	atomic_set_bit(&bma456->trig_flags, TRIGGED_INT1);
 
@@ -371,7 +553,7 @@ static void bma456_gpio_int2_callback(const struct device *dev,
 		CONTAINER_OF(cb, struct bma456_data, gpio_int2_cb);
 
 	ARG_UNUSED(pins);
-
+	LOG_WRN("Callback2");
 	atomic_set_bit(&bma456->trig_flags, TRIGGED_INT2);
 
 	/* int is level triggered so disable until processed */
@@ -395,6 +577,7 @@ static void bma456_thread_cb(const struct device *dev)
 	int8_t rslt;
 	// int status;
 
+	// LOG_WRN("Thread");
 
 
 	if (cfg->gpio_int1.port &&
@@ -472,9 +655,12 @@ static void bma456_thread_cb(const struct device *dev)
 	} while (0);
 
 	if (int1){
+		LOG_INF("Enabling INT1 interrupt");
 		setup_int1(dev,true);
+		
 	}
 	if (int2){
+		LOG_INF("Enabling INT2 interrupt");
 		setup_int2(dev,true);
 	}
 
@@ -483,6 +669,7 @@ static void bma456_thread_cb(const struct device *dev)
 #ifdef CONFIG_BMA456_TRIGGER_OWN_THREAD
 static void bma456_thread(struct bma456_data *bma456)
 {
+	LOG_WRN("Thread start");
 	while (1) {
 		k_sem_take(&bma456->gpio_sem, K_FOREVER);
 		bma456_thread_cb(bma456->dev);
@@ -499,16 +686,55 @@ static void bma456_work_cb(struct k_work *work)
 	bma456_thread_cb(bma456->dev);
 }
 #endif
+static int configure_bma4_pin(const struct gpio_dt_spec* dt_specs, uint8_t int_line,struct bma4_dev *bma){
+	uint8_t lvl;
+	if (dt_specs->dt_flags & (GPIO_ACTIVE_LOW)) { 
+		lvl=0;	//Using pull up or Active Low => pin should be configured as active low
+	} else {
+		lvl=1; //Any other combination should be configured as active high
+	}
+
+	uint8_t od;
+	if (dt_specs->dt_flags & (GPIO_PULL_UP|GPIO_PULL_DOWN)) { 
+		od=1;	//Using Open Drain
+	} else {
+		od=0; //Using push-pull
+	}
+	struct bma4_int_pin_config int_cfg = {
+		.edge_ctrl=0, //Don't care, this is for input, we are using it for output
+		.lvl = lvl,
+		.od = od,
+		.input_en=0,
+		.output_en=1,
+	};
+
+	LOG_INF("int %d lvl: %d, od:%d",int_line,lvl,od);
+	int8_t rslt = bma4_set_int_pin_config(&int_cfg,int_line,bma);	
+	if (rslt != BMA4_OK) {
+		LOG_ERR("Interrupt disable reg write failed (%d)", rslt);
+		return -EIO;
+	}	
+	return 0;
+}
 
 int bma456_init_interrupt(const struct device *dev)
 {
 	struct bma456_data *bma456 = dev->data;
+	bma456->dev=dev;
 	const struct bma456_config *cfg = dev->config;
 	struct bma4_dev *bma = &bma456->bma;
 	int status;
 
+
+	LOG_WRN("BOSH bma4_map_interrupt");
 	/* disable interrupt in case of warm (re)boot */
-	int8_t rslt = bma4_map_interrupt(BMA4_INTR1_MAP, 0xFFFF, BMA4_DISABLE, bma);
+	int8_t rslt = bma4_map_interrupt(BMA4_INTR1_MAP, 
+									BMA4_FIFO_FULL_INT | 
+									BMA4_FIFO_WM_INT | 
+									BMA4_DATA_RDY_INT | 
+									BMA4_MAG_DATA_RDY_INT | 
+									BMA4_ACCEL_DATA_RDY_INT, 
+									BMA4_DISABLE, bma);
 	if (rslt != BMA4_OK) {
 		LOG_ERR("Interrupt disable reg write failed (%d)", rslt);
 		return -EIO;
@@ -517,15 +743,21 @@ int bma456_init_interrupt(const struct device *dev)
 	
 	/* set latched or non-latched interrupts */
 
-	rslt = bma4_set_interrupt_mode(cfg->hw.int_non_latched?BMA4_NON_LATCH_MODE:BMA4_LATCH_MODE,bma);
+	// rslt = bma4_set_interrupt_mode(cfg->hw.int_non_latched?BMA4_NON_LATCH_MODE:BMA4_LATCH_MODE,bma);
+	// rslt = bma4_set_interrupt_mode(BMA4_NON_LATCH_MODE,bma);
+	rslt = bma4_set_interrupt_mode(BMA4_LATCH_MODE,bma);
 	if (rslt != BMA4_OK) {
 		LOG_ERR("Setting Latch mode %d failed (%d)", cfg->hw.int_non_latched, rslt);
 		return -EIO;
 	}
 
-
-
-
+	uint16_t int_status=0;
+	rslt = bma4_read_int_status(&int_status,bma);
+	if (rslt != BMA4_OK) {
+		LOG_ERR("Reading int status failed (%d)", rslt);
+		return -EIO;
+	}
+	LOG_WRN("Int Status:%04x", int_status);
 	/*
 	 * Setup INT1 (for DRDY) if defined in DT
 	 */
@@ -546,7 +778,9 @@ int bma456_init_interrupt(const struct device *dev)
 			LOG_ERR("Could not configure %s.%02u",
 				cfg->gpio_int1.port->name, cfg->gpio_int1.pin);
 			return status;
-		}
+		}		
+		LOG_WRN("Int1 pin %d",gpio_pin_get(cfg->gpio_int1.port,cfg->gpio_int1.pin));
+		// gpio_pin_interrupt_configure_dt(&cfg->gpio_int1,GPIO_INT_EDGE_TO_ACTIVE);
 
 		gpio_init_callback(&bma456->gpio_int1_cb,
 				bma456_gpio_int1_callback,
@@ -561,7 +795,16 @@ int bma456_init_interrupt(const struct device *dev)
 		LOG_INF("%s: int1 on %s.%02u", dev->name,
 						cfg->gpio_int1.port->name,
 						cfg->gpio_int1.pin);
-		int_pins|=1;		
+		int_pins|=1;
+		LOG_WRN("Int1 pin %d",gpio_pin_get(cfg->gpio_int1.port,cfg->gpio_int1.pin));
+		status = configure_bma4_pin(&cfg->gpio_int1,BMA4_INTR1_MAP,bma);
+		if (status < 0) {
+			LOG_ERR("Could not add gpio int1 callback");
+			return status;
+		}
+		LOG_WRN("Int1 pin %d",gpio_pin_get(cfg->gpio_int1.port,cfg->gpio_int1.pin));
+		setup_int1(dev,true);
+		// bma456_gpio_int1_callback(dev,&bma456->gpio_int1_cb,BIT(cfg->gpio_int1.pin));
 	}
 
 	if (!device_is_ready(cfg->gpio_int2.port)) {
@@ -578,6 +821,7 @@ int bma456_init_interrupt(const struct device *dev)
 				cfg->gpio_int2.port->name, cfg->gpio_int2.pin);
 			return status;
 		}
+		// gpio_pin_interrupt_configure_dt(&cfg->gpio_int2,GPIO_INT_EDGE_TO_ACTIVE);
 
 		gpio_init_callback(&bma456->gpio_int2_cb,
 				bma456_gpio_int2_callback,
@@ -592,7 +836,13 @@ int bma456_init_interrupt(const struct device *dev)
 		LOG_INF("%s: int2 on %s.%02u", dev->name,
 						cfg->gpio_int2.port->name,
 						cfg->gpio_int2.pin);
-		int_pins|=2;		
+		int_pins|=2;	
+		status = configure_bma4_pin(&cfg->gpio_int2,BMA4_INTR2_MAP,bma);
+		if (status < 0) {
+			LOG_ERR("Could not add gpio int1 callback");
+			return status;
+		}	
+		setup_int2(dev,true);
 	}
 
 
@@ -604,6 +854,8 @@ int bma456_init_interrupt(const struct device *dev)
 	bma456->int1_triggers = int1_triggers_array[int_pins];
 	bma456->int2_triggers = int2_triggers_array[int_pins];
 
+
+
 #if defined(CONFIG_BMA456_TRIGGER_OWN_THREAD)
 	k_sem_init(&bma456->gpio_sem, 0, K_SEM_MAX_LIMIT);
 
@@ -614,5 +866,11 @@ int bma456_init_interrupt(const struct device *dev)
 	bma456->work.handler = bma456_work_cb;
 #endif
 
+	// if (int_pins&1){
+	// 	setup_int1(dev,true);
+	// } 
+	// if (int_pins&2){
+	// 	setup_int2(dev,true);
+	// }
 	return status;
 }
