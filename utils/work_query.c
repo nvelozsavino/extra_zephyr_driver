@@ -1,7 +1,7 @@
 
 #include "work_query.h"
 
-#include <zephyr/zephyr.h>
+#include <zephyr/kernel.h>
 
 #define QUERY_WORKQ_STACK_SIZE      (1024)
 #define QUERY_WORKQ_THREAD_PRIORITY 6
