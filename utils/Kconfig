@@ -1,0 +1,54 @@
+comment "Extra Utils"
+
+
+menuconfig EXTRA_UTILS
+	bool "Extra utils"
+	default y
+	help
+	  Enable compilation of some helpful utils.
+
+if EXTRA_UTILS
+
+config EXTRA_UTILS_BASIC
+	bool "Basic Extra Utils"
+    default y
+	help
+	  Enable compilation of buffer_append, buffer_extract and crc helper functions
+
+config EXTRA_UTILS_VOLT_DIVIDER
+	bool "Voltage Divider driver"
+    default y
+    depends on ADC_NRFX_SAADC
+	help
+	  Enable compilation of buffer_append, buffer_extract and crc helper functions
+
+config EXTRA_UTILS_WORK_QUERY
+	bool "Work Query helper"
+    default y
+	help
+	  Enable compilation of work query helper
+
+config EXTRA_UTILS_APP_PIN
+	bool "App pin helper"
+    default y
+	help
+	  Enable compilation of app pin helpers
+
+config EXTRA_UTILS_APP_ALARM
+	bool "App alarm helper"
+    default y
+	help
+	  Enable compilation of app alarm helpers
+
+config EXTRA_UTILS_WAV
+	bool "WAV file helpers"
+    default y
+    depends on I2S
+	help
+	  Enable compilation of wav files helpers
+
+
+
+
+
+endif # BMA456

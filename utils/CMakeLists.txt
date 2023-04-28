@@ -1,10 +1,11 @@
 
+zephyr_library()
+
 zephyr_include_directories(.)
 
-zephyr_sources(
-        app_alarm.c
-        app_pin.c
-        utils.c
-        wav.c
-        work_query.c
-)
+zephyr_library_sources_ifdef(CONFIG_EXTRA_UTILS_BASIC utils.c)
+zephyr_library_sources_ifdef(CONFIG_EXTRA_UTILS_APP_PIN app_pin.c)
+zephyr_library_sources_ifdef(CONFIG_EXTRA_UTILS_APP_ALARM app_alarm.c)
+zephyr_library_sources_ifdef(CONFIG_EXTRA_UTILS_WAV wav.c)
+zephyr_library_sources_ifdef(CONFIG_EXTRA_UTILS_WORK_QUERY work_query.c)
+zephyr_library_sources_ifdef(CONFIG_EXTRA_UTILS_VOLT_DIVIDER volt_divider.c)

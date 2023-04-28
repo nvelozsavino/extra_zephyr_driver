@@ -1,0 +1,11 @@
+
+menu "nico's Extra Drivers"
+comment "Extra Module"
+
+rsource "drivers/Kconfig"
+rsource "utils/Kconfig"
+
+config APPLICATION_DEFINED_SYSCALL
+    default y
+
+endmenu

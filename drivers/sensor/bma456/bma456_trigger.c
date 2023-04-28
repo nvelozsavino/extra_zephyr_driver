@@ -109,7 +109,7 @@ static int bma456_trigger_map_helper(const struct device *dev,
 		LOG_INF("Enabling trigger %02x in int2", trigger);
 		// setup_int2(dev,false);
 	} else {
-		LOG_WRN("Int1:%08x, Int2: %08x, trigger %08x",trigger);
+		LOG_WRN("Int1:%08x, Int2: %08x, trigger %08x",bma456->int1_triggers,bma456->int2_triggers,trigger);
 		return -ENOTSUP;
 	}
 

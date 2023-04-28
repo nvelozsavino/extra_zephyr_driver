@@ -6,7 +6,6 @@
 
 
 add_subdirectory(drivers)
-add_subdirectory(utils)
-
+add_subdirectory_ifdef(CONFIG_EXTRA_UTILS utils)
 zephyr_include_directories(include)
 zephyr_include_directories(.)
