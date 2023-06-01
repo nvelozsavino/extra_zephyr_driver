@@ -7,7 +7,7 @@
 
 #define VOLT_DIVIDER_CFG_INIT(node,_gain) { \
 	.adc = DEVICE_DT_GET(DT_IO_CHANNELS_CTLR(node)), \
-	.io_channel = { DT_IO_CHANNELS_INPUT(node)}, \
+	.io_channel =  DT_IO_CHANNELS_INPUT(node), \
 	.power_gpios = GPIO_DT_SPEC_GET_OR(node, power_gpios, {}), \
 	.output_ohm = DT_PROP(node, output_ohms), \
 	.full_ohm = DT_PROP(node, full_ohms),	\

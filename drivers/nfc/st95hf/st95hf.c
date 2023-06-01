@@ -721,7 +721,7 @@ int st95hf_init(const struct device *dev)
 	int status;	
 
 
-	if (!spi_is_ready(&cfg->bus)) {
+	if (!spi_is_ready_dt(&cfg->bus)) {
 		LOG_ERR("SPI bus is not ready");
 		return -ENODEV;
 	}
