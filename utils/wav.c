@@ -2,16 +2,10 @@
 #include <zephyr/kernel.h>
 #include <zephyr/drivers/i2s.h>
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(wav, LOG_LEVEL_INF);
 
-typedef struct {
-	size_t data_index;
-	const wav_t* wav;
-	// float volume;
-    // size_t samples;
-    // uint8_t channels;
-    // uint8_t bytes_per_sample;    
-} sound_t;
+
+LOG_MODULE_REGISTER(wav, CONFIG_LOG_DEFAULT_LEVEL);
+
 
 #define SAMPLE_BIT_WIDTH    16
 #define BYTES_PER_SAMPLE    sizeof(int16_t)
@@ -62,7 +56,7 @@ static int prepare_transfer(const struct device *i2s_dev_tx, sound_t* sound)
 {
 	LOG_INF("PRE buffering");
 	int ret;
-	sound->data_index=0;
+	// sound->data_index=0;
 	for (int i = 0; i < INITIAL_BLOCKS; ++i) {
 		void *mem_block;
 
@@ -85,11 +79,31 @@ static int prepare_transfer(const struct device *i2s_dev_tx, sound_t* sound)
 	return 0;
 }
 
-static bool fill_buf(sound_t* sound, void *buffer)
+static ssize_t fill_buf(sound_t* sound, void *buffer)
 {
-	const uint8_t* p_data = &((const uint8_t*)sound->wav)[sizeof(wav_t)];
-	const uint8_t bytes = (sound->wav->format.bits_per_sample>>3);
-	const uint8_t channels = sound->wav->format.channels;
+	const uint8_t bytes = (sound->wav.format.bits_per_sample>>3);
+	const uint8_t channels = sound->wav.format.channels;
+	uint32_t num_samples = BLOCK_SIZE/(bytes*channels);
+	if (num_samples>SAMPLES_PER_BLOCK){
+		num_samples=SAMPLES_PER_BLOCK;
+	}
+	uint8_t data[BLOCK_SIZE];
+	
+	uint32_t to_read = num_samples*bytes*channels;
+
+	ssize_t read=sound->read_func(sound->context,data,to_read);
+
+	if (read<0){
+		LOG_ERR("Error reading sound %d",read);
+		return -1;
+	}
+
+	if (read<to_read){
+		LOG_WRN("Done");
+	}
+	uint32_t samples = read/(bytes*channels);
+	LOG_INF("Read %d, samples: %d",read, samples);
+	// const uint8_t* p_data = &((const uint8_t*)sound->wav)[sizeof(wav_t)];
 
 
 	int16_t offset = 0;
@@ -98,15 +112,15 @@ static bool fill_buf(sound_t* sound, void *buffer)
 		offset = -128;
 		gain=256;
 	}
-
-	for (uint32_t n=0;n<SAMPLES_PER_BLOCK;n++){
+	uint32_t index=0;
+	for (uint32_t n=0;n<samples;n++){
 		union {
 			uint8_t block[BYTES_PER_SAMPLE*NUMBER_OF_CHANNELS];
 			int16_t ch[NUMBER_OF_CHANNELS];
 		} sample;
 
 
-		const uint8_t *p_chunk = &p_data[sound->data_index];
+		const uint8_t *p_chunk = &data[index];
 		
 		//start of chunk in sound->data_index
 		
@@ -117,7 +131,7 @@ static bool fill_buf(sound_t* sound, void *buffer)
 		//sample[ch=c] = *(p_chunk + c*bytes) =
 		
 		for (uint8_t c = 0;c<NUMBER_OF_CHANNELS;c++){			
-			if (sound->data_index+(channels*bytes)>sound->wav->data.size){
+			if (index+(channels*bytes)>read){
 				sample.ch[c]=0;
 			} else {
 
@@ -132,14 +146,16 @@ static bool fill_buf(sound_t* sound, void *buffer)
 		}
 		uint8_t* ptr = (uint8_t*) buffer; 
 		memcpy(&ptr[n*BYTES_PER_SAMPLE*NUMBER_OF_CHANNELS],&sample,sizeof(sample));
-		sound->data_index+=channels*bytes;
+		index+=channels*bytes;
 		
 	}
+	return samples*BYTES_PER_SAMPLE*NUMBER_OF_CHANNELS;
 
-	if (sound->data_index>=sound->wav->data.size){
-		return true;
-	}
-	return false;
+	// sound->data_index+=index;
+	// if (sound->data_index>=sound->wav.data.size || read<BLOCK_SIZE){
+	// 	return 1;
+	// }
+	// return 0;
 		
 }
 
@@ -154,42 +170,50 @@ static int play_sound(const struct device * i2s_dev_tx, sound_t* sound){
 		return ret;
 	}
 	LOG_INF("Filling");
-	bool done = fill_buf(sound,mem_block);
-	LOG_INF("Writing");
+	ssize_t filled = fill_buf(sound,mem_block);
+	LOG_INF("Writing %d", filled);
 	
+	if (filled<=0){
+		LOG_INF("Done %d",filled);
+		k_mem_slab_free(&mem_slab,&mem_block);
+		return 1;
+	}
+	if (filled<BLOCK_SIZE){
+		memset(&mem_block[filled],0,BLOCK_SIZE-filled);
+	}
 	ret = i2s_write(i2s_dev_tx, mem_block, BLOCK_SIZE);
 	if (ret < 0) {
 	LOG_ERR("Failed to write block: %d\n", ret);
 		return ret;
 	}
-	LOG_INF("Done");
-	
-	if (done) {
-		return 1;
-	}
 	return 0;	
 }
 
 
-int wav_play(const struct device * i2s_dev, const wav_t* wav, struct k_sem* sem){
+static int wav_play_internal(const struct device * i2s_dev, sound_t* sound, struct k_sem* sem){
 
-    sound_t sound = {
-        .data_index=0,
-        .wav = wav,
-    };
+	int ret;
+	ssize_t read = sound->read_func(sound->context,&sound->wav,sizeof(wav_t));
+	if (read<0){
+		LOG_ERR("Error reading sound %d",read);
+		return read;
+	}
+	if (read!=sizeof(wav_t)){
+		LOG_ERR("Error reading wav header %d!=%d", read, sizeof(wav_t));
+		return -EIO;
+	}
+	ret = wav_check(&sound->wav);
+	if (ret!=0){
+		LOG_ERR("wav is invalid %d",ret);
+		return ret;
+	}	
 
 	struct i2s_config config;
-
-    int ret = wav_check(wav);
-    if (ret!=0){
-        return ret;
-    }
-
     config.word_size = SAMPLE_BIT_WIDTH;
     config.channels = NUMBER_OF_CHANNELS;
     config.format = I2S_FMT_DATA_FORMAT_I2S;
     config.options = I2S_OPT_BIT_CLK_MASTER | I2S_OPT_FRAME_CLK_MASTER;
-    config.frame_clk_freq = wav->format.sample_rate;
+    config.frame_clk_freq = sound->wav.format.sample_rate;
     config.mem_slab = &mem_slab;
     config.block_size = BLOCK_SIZE;
     config.timeout = TIMEOUT;
@@ -200,7 +224,7 @@ int wav_play(const struct device * i2s_dev, const wav_t* wav, struct k_sem* sem)
 		return ret;
 	}
 
-    ret = prepare_transfer(i2s_dev,&sound);
+    ret = prepare_transfer(i2s_dev,sound);
     if (ret!=0) {
         return ret;
     }
@@ -215,7 +239,7 @@ int wav_play(const struct device * i2s_dev, const wav_t* wav, struct k_sem* sem)
 
     while (sem==NULL || k_sem_take(sem, K_NO_WAIT) != 0) {
 
-        int ret = play_sound(i2s_dev,&sound);
+        int ret = play_sound(i2s_dev,sound);
         if (ret < 0) {
             LOG_INF("Failed to allocate play sound block: %d\n", ret);
             return ret;
@@ -232,6 +256,58 @@ int wav_play(const struct device * i2s_dev, const wav_t* wav, struct k_sem* sem)
 		return ret;
 	}
 
-    return 0;
+	return 0;
+}
 
+int wav_play(const struct device * i2s_dev, sound_t* sound, struct k_sem* sem){
+
+	int ret =0;
+	if (sound==NULL){
+		return -EINVAL;
+	}
+	if (sound->read_func==NULL){
+		LOG_ERR("read_func is required");
+		return -EINVAL;
+	}
+	
+	if (sound->open_func){
+		ret = sound->open_func(sound->context);
+		if (ret!=0){
+			LOG_ERR("Error opening sound %d",ret);
+			return ret;
+		}
+	}
+
+	ret = wav_play_internal(i2s_dev,sound,sem);
+	if (sound->close_func){
+		int err = sound->close_func(sound->context);
+		if (err!=0){
+			LOG_ERR("Error closing sound %d",err);			
+		}
+	}
+
+    return ret;
+
+}
+
+
+int wav_init_local(wav_local_t* local, const void* ptr, size_t size){
+	if (local==NULL || ptr==NULL){
+		return -EINVAL;
+	}
+	local->ptr=ptr;
+	local->pos=0;
+	local->size=size;
+	return 0;
+}
+
+ssize_t wav_read_local (void* context, void* ptr, size_t size){
+	wav_local_t* local = (wav_local_t*)context;
+	size_t to_copy = size;
+	if ((local->pos+to_copy)>local->size){
+		to_copy=local->size-local->pos;
+	}
+	memcpy(ptr,&local->ptr[local->pos],to_copy);
+	local->pos+=to_copy;
+	return to_copy;
 }
