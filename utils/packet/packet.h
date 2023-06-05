@@ -1,7 +1,7 @@
 
 #pragma once
 #include <stdint.h>
-
+#include <zephyr/device.h>
 
 #pragma pack(push,1)
 typedef struct {

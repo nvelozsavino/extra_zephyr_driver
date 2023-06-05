@@ -51,7 +51,7 @@ config EXTRA_UTILS_WAV
 config EXTRA_UTILS_PACKET
 	bool "Packet helpers"
     default y
-    depends on UART
+    depends on SERIAL
 	help
 	  Enable compilation of packet helpers
 
@@ -65,6 +65,11 @@ config PACKET_RX_TIMEOUT
 config PACKET_MAX_PL_LEN
 	int "Timeout for packet reception"
 	default 256
+	depends on EXTRA_UTILS_PACKET
+
+config PACKET_THREAD_PRIORITY
+	int "Priority for the packet thread"
+	default 3
 	depends on EXTRA_UTILS_PACKET
 
 

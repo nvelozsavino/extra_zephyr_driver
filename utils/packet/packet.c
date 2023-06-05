@@ -4,17 +4,18 @@
 #include "../utils.h"
 
 #include <zephyr/kernel.h>
+#include <zephyr/device.h>
 #include <zephyr/logging/log.h>
-
+#include <zephyr/drivers/uart.h>
 
 LOG_MODULE_REGISTER(packet, LOG_LEVEL_INF);
 
 
 
-#define SERIAL_RX_THREAD_STACK_SIZE 3000
+#define PACKET_THREAD_STACK_SIZE 3000
 
-K_THREAD_STACK_DEFINE(serial_thread_stack, SERIAL_RX_THREAD_STACK_SIZE);
-static struct k_thread serial_thread_data;
+K_THREAD_STACK_DEFINE(packet_thread_stack, PACKET_THREAD_STACK_SIZE);
+static struct k_thread packet_thread_data;
 
 typedef struct {
 	uint8_t state;
@@ -64,7 +65,7 @@ static const uint16_t crc16_tab[] = { 0x0000, 0x1021, 0x2042, 0x3063, 0x4084,
 		0x0cc1, 0xef1f, 0xff3e, 0xcf5d, 0xdf7c, 0xaf9b, 0xbfba, 0x8fd9, 0x9ff8,
 		0x6e17, 0x7e36, 0x4e55, 0x5e74, 0x2e93, 0x3eb2, 0x0ed1, 0x1ef0 };
 
-static uint16_t crc16(uint8_t *buf, uint32_t len) {
+static uint16_t crc16(const uint8_t *buf, uint32_t len) {
 	uint32_t i;
 	uint16_t cksum = 0;
 	for (i = 0; i < len; i++) {
@@ -74,13 +75,13 @@ static uint16_t crc16(uint8_t *buf, uint32_t len) {
 }
 
 
-void serial_rx_callback(const struct device *dev, void *user_data)
+static void serial_rx_callback(const struct device *dev, void *user_data)
 {
     uint8_t data=0;
     if (!uart_irq_update(dev)) {
         return;
     }
-	packet_handler_t* handler = (packet_handler_t*)user_data;
+	
 	int64_t now = k_uptime_get();
 
 	if (m_packet.state!=0 && k_uptime_delta(&m_packet.last)>CONFIG_PACKET_RX_TIMEOUT){
@@ -121,7 +122,7 @@ void serial_rx_callback(const struct device *dev, void *user_data)
 
 		case 2:
 			m_packet.packet.length |= (uint16_t)data;
-			if (m_packet.packet.length > 0 && m_packet.packet.length <= PACKET_MAX_PL_LEN) {
+			if (m_packet.packet.length > 0 && m_packet.packet.length <= CONFIG_PACKET_MAX_PL_LEN) {
 				m_packet.state++;
 				m_packet.last = now;
 			} else {
@@ -181,7 +182,7 @@ void serial_rx_callback(const struct device *dev, void *user_data)
 }
 
 
-void slcan_serial_thread(void *arg1, void *arg2, void *arg3)
+void packet_thread(void *arg1, void *arg2, void *arg3)
 {
     packet_t packet;
 
@@ -230,8 +231,8 @@ int packet_init(const struct device* serial, packet_func_t process_func)
         return -ENODEV;
     }
 
-    k_thread_create(&serial_thread_data, serial_thread_stack,
-                    K_THREAD_STACK_SIZEOF(serial_thread_stack), slcan_serial_thread, NULL, NULL,
+    k_thread_create(&packet_thread_data, packet_thread_stack,
+                    K_THREAD_STACK_SIZEOF(packet_thread_stack), packet_thread, NULL, NULL,
                     NULL, CONFIG_PACKET_THREAD_PRIORITY, 0, K_NO_WAIT);
 
     return 0;
