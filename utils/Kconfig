@@ -48,7 +48,26 @@ config EXTRA_UTILS_WAV
 	  Enable compilation of wav files helpers
 
 
+config EXTRA_UTILS_PACKET
+	bool "Packet helpers"
+    default y
+    depends on UART
+	help
+	  Enable compilation of packet helpers
 
+
+config PACKET_RX_TIMEOUT
+	int "Timeout for packet reception"
+	default 10
+	depends on EXTRA_UTILS_PACKET
+
+
+config PACKET_MAX_PL_LEN
+	int "Timeout for packet reception"
+	default 256
+	depends on EXTRA_UTILS_PACKET
 
 
 endif # BMA456
+
+
