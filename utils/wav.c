@@ -51,12 +51,13 @@ int wav_check(const wav_t* wav){
     return 0;
 
 }
-
+static int x=0;
 static int prepare_transfer(const struct device *i2s_dev_tx, sound_t* sound)
 {
 	LOG_INF("PRE buffering");
 	int ret;
 	// sound->data_index=0;
+	x=0;
 	for (int i = 0; i < INITIAL_BLOCKS; ++i) {
 		void *mem_block;
 
@@ -68,7 +69,7 @@ static int prepare_transfer(const struct device *i2s_dev_tx, sound_t* sound)
 
 		//fill_buf(sound,mem_block);
 		memset(mem_block, 0, BLOCK_SIZE);
-
+		LOG_INF("I2S Write %d pre",x++);
 		ret = i2s_write(i2s_dev_tx, mem_block, BLOCK_SIZE);
 		if (ret < 0) {
 			LOG_ERR("Failed to write block %d: %d\n", i, ret);
@@ -178,15 +179,23 @@ static int play_sound(const struct device * i2s_dev_tx, sound_t* sound){
 		k_mem_slab_free(&mem_slab,&mem_block);
 		return 1;
 	}
+	bool done=false;
 	if (filled<BLOCK_SIZE){
-		memset(&mem_block[filled],0,BLOCK_SIZE-filled);
+		uint8_t* ptr = (uint8_t*)mem_block + filled;
+		memset(ptr,0,BLOCK_SIZE-filled);
+		done=true;
 	}
+	LOG_INF("I2S Write %d",x++);
 	ret = i2s_write(i2s_dev_tx, mem_block, BLOCK_SIZE);
 	if (ret < 0) {
-	LOG_ERR("Failed to write block: %d\n", ret);
+		LOG_ERR("Failed to write block: %d\n", ret);
 		return ret;
 	}
-	return 0;	
+	if (done){
+		return 1;
+	} else {
+		return 0;	
+	}
 }
 
 
