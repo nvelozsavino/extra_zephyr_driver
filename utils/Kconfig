@@ -47,6 +47,14 @@ config EXTRA_UTILS_WAV
 	help
 	  Enable compilation of wav files helpers
 
+config EXTRA_UTILS_MP3
+	bool "MP3 file helpers"
+    default y
+    depends on I2S
+	help
+	  Enable compilation of mp3 files helpers
+
+
 
 config EXTRA_UTILS_PACKET
 	bool "Packet helpers"
