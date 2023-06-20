@@ -56,14 +56,35 @@ static int mp3_play_internal(const struct device * i2s_dev, struct fs_file_t* fi
 	size_t file_ptr=0;	//keeps track of how many bytes from the file has been read
 	size_t buffer_used=0;
 	int channels = 0;
-	size_t i2s_writes = 0;
+	// size_t i2s_writes = 0;
 	
 	void *mem_block=NULL;
 	int sample_ptr=0;
 	int max_samples=0;
 	int bytes_per_sample = 0;	
-	
+	bool move = false;
 	do {
+
+		if (move){
+			size_t N = buffer_ptr - buffer_used;
+			if (buffer_used==0){
+				LOG_ERR("Buffer not enough for decoding");
+				break;
+						
+			}
+			LOG_DBG("More samples buf[%d] %d bytes to buf[0]",buffer_used,N);
+			memmove(buf,&buf[buffer_used],N);
+			// if (buffer_used>=N){
+			// 	memcpy(buf,&buf[buffer_used],N);
+			// } else {
+			// 	memcpy(buf,&buf[buffer_used], buffer_used);
+			// 	memcpy(&buf[buffer_used],&buf[2*buffer_used],N-buffer_used);
+			// }
+			buffer_used=0;
+			buffer_ptr=N;
+			move=true;
+		}
+
 		//read from file
 		ssize_t read = fs_read(file,&buf[buffer_ptr],sizeof(buf)-buffer_ptr);
 		if (read<0){
@@ -84,6 +105,15 @@ static int mp3_play_internal(const struct device * i2s_dev, struct fs_file_t* fi
 			buffer_ptr+=read;
 			LOG_DBG("Read %d bytes, %d/%d. filled: %d",read,file_ptr,(int)file_size,buffer_ptr);
 			do {
+
+ 				int free_format_bytes;
+				int frame_size;
+                int i =mp3d_find_frame(buf+buffer_used,buffer_ptr-buffer_used, &free_format_bytes, &frame_size);
+                if (i!=0 && frame_size==0){
+                    move=true;
+                    break;
+                }
+
 				LOG_DBG("Dec [%d], %d", buffer_used,buffer_ptr-buffer_used);
 				samples = mp3dec_decode_frame(&mp3d,buf+buffer_used,buffer_ptr-buffer_used,pcm,&info);
 				
@@ -114,7 +144,7 @@ static int mp3_play_internal(const struct device * i2s_dev, struct fs_file_t* fi
 						config.channels = channels;
 						config.format = I2S_FMT_DATA_FORMAT_I2S;
 						config.options = I2S_OPT_BIT_CLK_MASTER | I2S_OPT_FRAME_CLK_MASTER;
-						config.frame_clk_freq = info.hz;
+						config.frame_clk_freq = 44100;//info.hz;
 						config.mem_slab = &mem_slab;
 						config.block_size = BLOCK_SIZE;
 						config.timeout = TIMEOUT;
@@ -124,16 +154,36 @@ static int mp3_play_internal(const struct device * i2s_dev, struct fs_file_t* fi
 							LOG_ERR("Failed to configure TX stream: %d\n", ret);
 							return ret;
 						}
-						i2s_writes=0;
-						mem_block=NULL;			
+						// i2s_writes=0;
+						
 						bytes_per_sample = sizeof(int16_t)*channels;
-			
+						for (uint8_t i=0;i<INITIAL_BLOCKS;i++){
+							int ret = k_mem_slab_alloc(&mem_slab, &mem_block,K_NO_WAIT);
+							if (ret<0){
+								LOG_ERR("Failed to allocate TX block: %d\n", ret);
+								return ret;
+							}
+							memset(mem_block,0,BLOCK_SIZE);
+							LOG_DBG("Flushing");// %d",i2s_writes);
+							ret = i2s_write(i2s_dev, mem_block, BLOCK_SIZE);
+							if (ret < 0) {
+								LOG_ERR("Failed to write block: %d\n", ret);
+								return ret;
+							}
+						}
+						LOG_DBG("I2S Trigger");
+						ret = i2s_trigger(i2s_dev, I2S_DIR_TX, I2S_TRIGGER_START);
+						if (ret < 0) {
+							LOG_ERR("Failed to trigger command START on TX: %d\n",  ret);
+							return ret;
+						}
+						mem_block=NULL;			
 					}
 					int remaining = samples;
 					int index = 0;
 					do {
 						if (mem_block==NULL){
-							int ret = k_mem_slab_alloc(&mem_slab, &mem_block, i2s_writes<INITIAL_BLOCKS?K_NO_WAIT:K_FOREVER);
+							int ret = k_mem_slab_alloc(&mem_slab, &mem_block, K_FOREVER);
 							if (ret<0){
 								LOG_ERR("Failed to allocate TX block: %d\n", ret);
 								return ret;
@@ -169,15 +219,15 @@ static int mp3_play_internal(const struct device * i2s_dev, struct fs_file_t* fi
 							}
 							
 							sample_ptr=0;
-							i2s_writes++;
-							if (i2s_writes==INITIAL_BLOCKS){
-								LOG_DBG("I2S Trigger");
-								ret = i2s_trigger(i2s_dev, I2S_DIR_TX, I2S_TRIGGER_START);
-								if (ret < 0) {
-									LOG_ERR("Failed to trigger command START on TX: %d\n",  ret);
-									return ret;
-								}
-							}
+							// i2s_writes++;
+							// if (i2s_writes==INITIAL_BLOCKS){
+							// 	LOG_DBG("I2S Trigger");
+							// 	ret = i2s_trigger(i2s_dev, I2S_DIR_TX, I2S_TRIGGER_START);
+							// 	if (ret < 0) {
+							// 		LOG_ERR("Failed to trigger command START on TX: %d\n",  ret);
+							// 		return ret;
+							// 	}
+							// }
 							mem_block=NULL;
 						}
 
@@ -188,20 +238,7 @@ static int mp3_play_internal(const struct device * i2s_dev, struct fs_file_t* fi
 				} else if (samples==0 && info.frame_bytes==0 && !is_done){
 					
 					//need more bytes
-					size_t N = buffer_ptr - buffer_used;
-					if (buffer_used==0){
-						LOG_ERR("Buffer not enough for decoding");
-						return -1;						
-					}
-					LOG_DBG("More samples buf[%d] %d bytes to buf[0]",buffer_used,N);
-					if (buffer_used>=N){
-						memcpy(buf,&buf[buffer_used],N);
-					} else {
-						memcpy(buf,&buf[buffer_used], buffer_used);
-						memcpy(&buf[buffer_used],&buf[2*buffer_used],N-buffer_used);
-					}
-					buffer_used=0;
-					buffer_ptr=N;
+					move=true;
 					break;
 				}
 				if (is_done){
@@ -217,14 +254,27 @@ static int mp3_play_internal(const struct device * i2s_dev, struct fs_file_t* fi
 		uint8_t* dst = (uint8_t*)mem_block;
 		int samples_to_clear = max_samples-sample_ptr;
 		memset(&dst[sample_ptr*bytes_per_sample],0,samples_to_clear*bytes_per_sample);
-		LOG_DBG("last I2S Write %d",i2s_writes);
+		LOG_DBG("last I2S Write");// %d",i2s_writes);
 		ret = i2s_write(i2s_dev, mem_block, BLOCK_SIZE);
 		if (ret < 0) {
 			LOG_ERR("Failed to write block: %d\n", ret);
 			return ret;
 		}
 	}
-	
+	for (uint8_t i=0;i<INITIAL_BLOCKS;i++){
+		int ret = k_mem_slab_alloc(&mem_slab, &mem_block,K_FOREVER);
+		if (ret<0){
+			LOG_ERR("Failed to allocate TX block: %d\n", ret);
+			return ret;
+		}
+		memset(mem_block,0,BLOCK_SIZE);
+		LOG_DBG("Flushing 0s");//
+		ret = i2s_write(i2s_dev, mem_block, BLOCK_SIZE);
+		if (ret < 0) {
+			LOG_ERR("Failed to write block: %d\n", ret);
+			return ret;
+		}
+	}
     ret = i2s_trigger(i2s_dev, I2S_DIR_TX, I2S_TRIGGER_DRAIN);
 	if (ret < 0) {
 		LOG_INF("Failed to trigger command DRAIN on TX: %d\n",  ret);
