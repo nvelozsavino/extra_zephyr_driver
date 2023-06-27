@@ -3,7 +3,9 @@
 //
 
 #include "utils.h"
-
+#include <stddef.h>
+#include <errno.h>
+#include <string.h>
 void buffer_append_uint16(uint16_t source, uint8_t *dst) {
     dst[0] = (uint8_t)(source >> 8);
     dst[1] = (uint8_t)(source);
@@ -153,4 +155,34 @@ uint32_t str_to_uint(const char *text, uint8_t size) {
 }
 
 
+ int tokenize(const char* str,const char* s,const char** next){
+    if (!str || !s){
+        
+        if (next!=NULL){
+            *next=NULL;
+        }
+        return -EINVAL;
+    }
+    const char* token = strstr(str,s);
+    if (token==NULL){
+        if (next!=NULL){
+            *next=NULL;
+        }
+        return strlen(str);
+    } else {
+        if (next!=NULL){
+            *next = token + strlen(s);
+        }
+        return (int)(token-str);
+    }
+}
 
+/**
+ * str = "ass::2ede::bee"
+ * int pos = 0;
+ * token = tokenize(str,&pos,"::") => str = "ass\0:2ede\0:bee\0"
+ * 
+ * 
+ * 
+ * 
+*/

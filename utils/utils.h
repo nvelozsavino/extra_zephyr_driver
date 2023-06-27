@@ -35,3 +35,5 @@ uint32_t buffer_extract_uint32_r(const uint8_t *src);
 int32_t buffer_extract_int32_r(const uint8_t *src);
 
 uint32_t str_to_uint(const char *text, uint8_t size);
+
+int tokenize(const char* str,const char* s,const char** next);
