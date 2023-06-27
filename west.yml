@@ -1,0 +1,9 @@
+manifest:
+  remotes:
+    - name: nico-repo
+      url-base: https://github.com/nvelozsavino      
+  projects:
+    - name: tiny-json
+      remote: nico-repo
+      path: modules/lib/tiny-json
+      revision: develop
