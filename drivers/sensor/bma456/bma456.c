@@ -676,7 +676,7 @@ static int bma456_pm_action(const struct device *dev,
 			return -EIO;
 		}
 
-		rslt = bma4_set_accel_enable(BMA4_ENABLE, &bma);
+		rslt = bma4_set_accel_enable(BMA4_ENABLE, bma);
 		if (rslt != BMA4_OK) {
 			LOG_ERR("failed to disable accelerometer");
 			return -EIO;
@@ -691,7 +691,7 @@ static int bma456_pm_action(const struct device *dev,
 			return -EIO;
 		}
 
-		rslt = bma4_set_accel_enable(BMA4_DISABLE, &bma);
+		rslt = bma4_set_accel_enable(BMA4_DISABLE, bma);
 		if (rslt != BMA4_OK) {
 			LOG_ERR("failed to disable accelerometer");
 			return -EIO;

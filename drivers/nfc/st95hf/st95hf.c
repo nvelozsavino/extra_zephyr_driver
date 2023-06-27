@@ -16,7 +16,9 @@
 #include "st95hf.h"
 LOG_MODULE_REGISTER(st95hf, LOG_LEVEL_DBG);
 
-
+#ifdef CONFIG_PM_DEVICE
+	#warning TODO
+#endif
 
 int st95hf_stop_waiting(const struct device* dev, bool force, bool pulse_irq){
 	st95hf_data_t *st95hf = dev->data;

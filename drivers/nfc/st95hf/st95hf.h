@@ -32,7 +32,6 @@ typedef struct {
 typedef struct {
 
 #ifdef CONFIG_PM_DEVICE
-	#erro todo
 #endif
 
 #ifdef CONFIG_ST95HF_TRIGGER
