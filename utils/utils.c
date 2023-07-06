@@ -6,6 +6,33 @@
 #include <stddef.h>
 #include <errno.h>
 #include <string.h>
+
+void buffer_append_uint24(uint32_t source, uint8_t *dst){
+    dst[0] = (uint8_t)(source>>16);
+    dst[1] = (uint8_t)(source>>8);
+    dst[2] = (uint8_t)(source);
+}
+void buffer_append_int24(int32_t source, uint8_t *dst){
+    buffer_append_uint24((int32_t)source, dst);
+}
+
+uint32_t buffer_extract_uint24(const uint8_t *src) {
+    uint32_t result = 0;
+    result |= (uint32_t)(src[0] << 16);
+    result |= (uint32_t)(src[1] << 8);
+    result |= (uint32_t)(src[2]);
+    return result;
+}
+
+int32_t buffer_extract_int24(const uint8_t *src) {
+    uint32_t result = buffer_extract_uint24_r(src);
+    if (result & 0x00800000){
+        result|=0xFF000000; //make it negative in 32 bits
+    }
+    return (int32_t)result;
+}
+
+
 void buffer_append_uint16(uint16_t source, uint8_t *dst) {
     dst[0] = (uint8_t)(source >> 8);
     dst[1] = (uint8_t)(source);
@@ -69,6 +96,33 @@ uint16_t buffer_extract_uint16_r(const uint8_t *src) {
 int16_t buffer_extract_int16_r(const uint8_t *src) {
     return (int16_t)buffer_extract_uint16_r(src);
 }
+
+
+void buffer_append_uint24_r(uint32_t source, uint8_t *dst){
+    dst[2] = (uint8_t)(source>>16);
+    dst[1] = (uint8_t)(source>>8);
+    dst[0] = (uint8_t)(source);
+}
+void buffer_append_int24_r(int32_t source, uint8_t *dst){
+    buffer_append_uint24_r((int32_t)source, dst);
+}
+
+uint32_t buffer_extract_uint24_r(const uint8_t *src) {
+    uint32_t result = 0;
+    result |= (uint32_t)(src[2] << 16);
+    result |= (uint32_t)(src[1] << 8);
+    result |= (uint32_t)(src[0]);
+    return result;
+}
+
+int32_t buffer_extract_int24_r(const uint8_t *src) {
+    uint32_t result = buffer_extract_uint24_r(src);
+    if (result & 0x00800000){
+        result|=0xFF000000; //make it negative in 32 bits
+    }
+    return (int32_t)result;
+}
+
 
 void buffer_append_uint32_r(uint32_t source, uint8_t *dst) {
     dst[3] = (uint8_t)(source >> 24);

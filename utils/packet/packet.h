@@ -10,7 +10,7 @@ typedef struct {
 } packet_t;
 #pragma pack(pop)
 
-typedef void (*packet_func_t)(const uint8_t* data, uint16_t size);
+typedef void (*packet_func_t)(const uint8_t* data, uint16_t size, void* context);
 
-int packet_init(const struct device* serial, packet_func_t process_func);
+int packet_init(const struct device* serial, packet_func_t process_func, void* context);
 void packet_send(const uint8_t *data, uint16_t len);

@@ -191,7 +191,7 @@ void packet_thread(void *arg1, void *arg2, void *arg3)
 
     while (k_msgq_get(&rx_msgq, &packet, K_FOREVER) == 0) {
 		if (m_packet.process_func!=NULL){
-			m_packet.process_func(packet.data,packet.length);
+			m_packet.process_func(packet.data,packet.length, m_packet.custom_data);
 		}
     }
 }
@@ -219,11 +219,12 @@ void packet_send(const uint8_t *data, uint16_t len)
 }
 
 
-int packet_init(const struct device* serial, packet_func_t process_func)
+int packet_init(const struct device* serial, packet_func_t process_func, void* context)
 {
 
 	m_packet.dev=serial;
 	m_packet.process_func=process_func;
+	m_packet.custom_data=context;
     k_sem_init(&m_packet.tx_sem, 1, 1);
 
     if (!device_is_ready(serial)) {
