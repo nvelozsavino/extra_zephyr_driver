@@ -2,6 +2,7 @@
 #pragma once
 #include <stdint.h>
 #include <zephyr/device.h>
+#include <zephyr/kernel.h>
 
 #pragma pack(push,1)
 typedef struct {
@@ -10,7 +11,17 @@ typedef struct {
 } packet_t;
 #pragma pack(pop)
 
-typedef void (*packet_func_t)(const uint8_t* data, uint16_t size, void* context);
+typedef bool (*packet_func_t)(const uint8_t* data, uint16_t size, void* context);
 
-int packet_init(const struct device* serial, packet_func_t process_func, void* context);
-void packet_send(const uint8_t *data, uint16_t len);
+typedef struct packet_process_s {
+    packet_func_t func;
+    void* context;
+    struct packet_process_s* next;
+} packet_process_t;
+
+
+int packet_init(const struct device* serial);
+int packet_send(const uint8_t *data, uint16_t len, k_timeout_t timeout);
+
+int packet_register(packet_process_t* cb);
+int packet_unregister(packet_process_t* cb);

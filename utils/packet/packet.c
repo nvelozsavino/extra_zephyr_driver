@@ -18,19 +18,22 @@ K_THREAD_STACK_DEFINE(packet_thread_stack, PACKET_THREAD_STACK_SIZE);
 static struct k_thread packet_thread_data;
 
 typedef struct {
+	bool initiated;
 	uint8_t state;
 	int64_t last;
-    packet_func_t process_func;
-    void* custom_data;
 	packet_t packet;
 	uint32_t data_ptr;
 	uint16_t crc;
 	uint8_t activeBuffer;
 	struct k_sem tx_sem;
 	const struct device* dev;
+	packet_process_t* callback;
 } packet_handler_t;
 
-static packet_handler_t m_packet;
+static packet_handler_t m_packet = {
+	.initiated=false
+};
+
 K_MSGQ_DEFINE(rx_msgq, sizeof(packet_t), 10, 4);
 
 
@@ -182,7 +185,7 @@ static void serial_rx_callback(const struct device *dev, void *user_data)
 }
 
 
-void packet_thread(void *arg1, void *arg2, void *arg3)
+static void packet_thread(void *arg1, void *arg2, void *arg3)
 {
     packet_t packet;
 
@@ -190,15 +193,28 @@ void packet_thread(void *arg1, void *arg2, void *arg3)
     uart_irq_rx_enable(m_packet.dev);
 
     while (k_msgq_get(&rx_msgq, &packet, K_FOREVER) == 0) {
-		if (m_packet.process_func!=NULL){
-			m_packet.process_func(packet.data,packet.length, m_packet.custom_data);
-		}
+
+        packet_process_t* callback=m_packet.callback;
+        while (callback!=NULL){
+            if (callback->func!=NULL){
+                if (callback->func(packet.data,packet.length,callback->context)){
+					break;
+				}
+            }
+            callback=callback->next;
+        }
     }
 }
 
-void packet_send(const uint8_t *data, uint16_t len)
+int packet_send(const uint8_t *data, uint16_t len, k_timeout_t timeout)
 {
-    k_sem_take(&m_packet.tx_sem, K_FOREVER);
+	if (!m_packet.initiated){
+		return -EACCES;
+	}
+    int res = k_sem_take(&m_packet.tx_sem, timeout);
+	if (res!=0){
+		return res;
+	}
 	if (len>255){
 		uart_poll_out(m_packet.dev, 0x02);
 		uart_poll_out(m_packet.dev, (uint8_t)len);
@@ -216,28 +232,62 @@ void packet_send(const uint8_t *data, uint16_t len)
 	uart_poll_out(m_packet.dev, 0x03);
 
     k_sem_give(&m_packet.tx_sem);
+	return 0;
 }
 
 
-int packet_init(const struct device* serial, packet_func_t process_func, void* context)
+int packet_init(const struct device* serial)
 {
-
+	if (m_packet.initiated){
+		LOG_INF("Packet already initiated");
+		return 0;
+	}
 	m_packet.dev=serial;
-	m_packet.process_func=process_func;
-	m_packet.custom_data=context;
     k_sem_init(&m_packet.tx_sem, 1, 1);
-
     if (!device_is_ready(serial)) {
         LOG_ERR("Serial device not ready");
         return -ENODEV;
     }
-
+	m_packet.initiated=true;
+	m_packet.callback=NULL;
     k_thread_create(&packet_thread_data, packet_thread_stack,
                     K_THREAD_STACK_SIZEOF(packet_thread_stack), packet_thread, NULL, NULL,
                     NULL, CONFIG_PACKET_THREAD_PRIORITY, 0, K_NO_WAIT);
 
+	
     return 0;
 }
 
 
+
+int packet_register(packet_process_t* cb){
+	if (!m_packet.initiated){
+		return -EACCES;
+	}
+    if (cb==NULL){
+        return -EINVAL;
+    }
+    cb->next=m_packet.callback;
+    m_packet.callback=cb;
+    return 0;
+}
+
+int packet_unregister(packet_process_t* cb){
+	if (!m_packet.initiated){
+		return -EACCES;
+	}
+    if (cb==NULL){
+        return -EINVAL;
+    }
+    packet_process_t** next = &m_packet.callback;
+    while (*next!=NULL){
+        if (*next==cb){
+            *next=cb->next;
+            cb->next=NULL;
+            return 0;
+        }
+        next=&cb->next;
+    }
+    return -ENOENT;
+}
 
