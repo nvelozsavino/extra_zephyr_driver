@@ -66,7 +66,7 @@ config EXTRA_UTILS_PACKET
 
 config PACKET_RX_TIMEOUT
 	int "Timeout for packet reception"
-	default 10
+	default 100
 	depends on EXTRA_UTILS_PACKET
 
 

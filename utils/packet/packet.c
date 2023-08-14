@@ -87,7 +87,7 @@ static void serial_rx_callback(const struct device *dev, void *user_data)
 	
 	int64_t now = k_uptime_get();
 
-	if (m_packet.state!=0 && k_uptime_delta(&m_packet.last)>CONFIG_PACKET_RX_TIMEOUT){
+	if (m_packet.state!=0 && (k_uptime_get()-m_packet.last)>CONFIG_PACKET_RX_TIMEOUT){
 		LOG_DBG("PTO");
 		m_packet.state=0;
 	}
